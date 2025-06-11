@@ -218,7 +218,8 @@ export function useBondMetrics(bondId: string | undefined, role: 'emisor' | 'inv
         autoCalculate: true,
     });
 
-    const metrics = lastResult?.metricas?.[role] || null;
+    const metrics = lastResult?.metricas?.[role as keyof typeof lastResult.metricas] || null;
+
 
     return {
         metrics,
@@ -228,7 +229,10 @@ export function useBondMetrics(bondId: string | undefined, role: 'emisor' | 'inv
         // Métricas específicas de fácil acceso
         precioActual: metrics?.precioActual || 0,
         van: metrics?.van || 0,
-        tir: role === 'emisor' ? metrics?.tceaEmisor || 0 : metrics?.treaBonista || 0,
+        tir:
+            role === 'emisor'
+                ? (metrics as CalculationMetrics['emisor'])?.tceaEmisor || 0
+                : (metrics as CalculationMetrics['bonista'])?.treaBonista || 0,
         duracion: metrics?.duracion || 0,
         convexidad: metrics?.convexidad || 0,
 

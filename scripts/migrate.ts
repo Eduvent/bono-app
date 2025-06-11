@@ -1,6 +1,6 @@
 // scripts/migrate.ts
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../lib/generated/client'
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs/promises';

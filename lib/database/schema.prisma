@@ -273,6 +273,7 @@ model CalculationResult {
   bond                Bond              @relation(fields: [bondId], references: [id], onDelete: Cascade)
   inputs              CalculationInputs @relation(fields: [calculationInputsId], references: [id], onDelete: Cascade)
   @@map("calculation_results")
+  @@unique([bondId, calculationInputsId], name: "CalculationResult_bondId_calculationInputsId_key", map: "calculation_result_bondid_calculationinputsid_unique")
 }
 
 // =====================================================

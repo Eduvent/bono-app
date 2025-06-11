@@ -1,38 +1,39 @@
 // lib/models/Bond.ts
 
-import { PrismaClient, Bond as PrismaBond, BondStatus, FrequenciaCupon, TipoTasa } from '@prisma/client';
+import {
+    PrismaClient,
+    Bond as PrismaBond,
+    BondStatus,
+    FrequenciaCupon,
+    TipoTasa,
+    // Emisor as PrismaEmisor, // No es estrictamente necesario si usamos Pick en BondWithFullRelations
+    BondCosts as PrismaBondCosts,
+    Prisma
+} from '../../lib/generated/client';
 import { z } from 'zod';
 import { Decimal } from 'decimal.js';
 
-/**
- * Modelo de datos para Bonos
- * Incluye validaciones, CRUD y métodos de negocio
- */
-
-// Esquemas de validación
+// --- ESQUEMAS DE VALIDACIÓN ZOD ---
 export const CreateBondSchema = z.object({
     emisorId: z.string().cuid('ID de emisor inválido'),
     name: z.string().min(1, 'Nombre es requerido').max(200, 'Nombre muy largo'),
-    codigoIsin: z.string().optional(),
+    codigoIsin: z.string().trim().optional().default(''),
 
-    // Datos básicos
     valorNominal: z.number().positive('Valor nominal debe ser positivo'),
     valorComercial: z.number().positive('Valor comercial debe ser positivo'),
     numAnios: z.number().int().positive('Número de años debe ser positivo').max(50, 'Máximo 50 años'),
-    fechaEmision: z.date(),
+    fechaEmision: z.coerce.date(),
     frecuenciaCupon: z.nativeEnum(FrequenciaCupon),
     baseDias: z.union([z.literal(360), z.literal(365)]),
 
-    // Configuración financiera
     tipoTasa: z.nativeEnum(TipoTasa),
-    periodicidadCapitalizacion: z.string(),
-    tasaAnual: z.number().min(0, 'Tasa no puede ser negativa').max(1, 'Tasa no puede ser mayor a 100%'),
+    periodicidadCapitalizacion: z.string().min(1, 'Periodicidad de capitalización requerida'),
+    tasaAnual: z.number().min(0).max(1),
     indexadoInflacion: z.boolean().default(false),
     inflacionAnual: z.number().min(0).max(1).optional(),
     primaVencimiento: z.number().min(0).max(1).default(0),
     impuestoRenta: z.number().min(0).max(1),
 
-    // Costes
     costes: z.object({
         estructuracionPct: z.number().min(0).max(1),
         colocacionPct: z.number().min(0).max(1),
@@ -40,36 +41,29 @@ export const CreateBondSchema = z.object({
         cavaliPct: z.number().min(0).max(1),
     }),
 
-    // Series de datos
     inflacionSerie: z.array(z.number().min(0).max(1)),
     graciaSerie: z.array(z.enum(['S', 'P', 'T'])),
 });
 
-export const UpdateBondSchema = CreateBondSchema.partial();
+export const UpdateBondSchema = CreateBondSchema.partial().extend({
+    // Permitir que valorComercial sea opcional en costes durante la actualización
+    costes: CreateBondSchema.shape.costes.extend({
+        valorComercial: z.number().positive().optional() // Para recalcular costes en update
+    }).optional()
+});
 
 export type CreateBondInput = z.infer<typeof CreateBondSchema>;
 export type UpdateBondInput = z.infer<typeof UpdateBondSchema>;
 
-// Tipos extendidos
-export interface BondWithRelations extends PrismaBond {
-    emisor: {
-        companyName: string;
-        ruc: string;
+
+// --- TIPOS EXTENDIDOS PARA RESULTADOS ---
+export type BondWithFullRelations = Prisma.BondGetPayload<{
+    include: {
+        emisor: { select: { companyName: true, ruc: true } };
+        costs: true; // PrismaBondCosts | null
+        _count: { select: { cashFlows: true, investments: true } };
     };
-    costs?: {
-        estructuracionPct: Decimal;
-        colocacionPct: Decimal;
-        flotacionPct: Decimal;
-        cavaliPct: Decimal;
-        emisorTotalAbs: Decimal;
-        bonistaTotalAbs: Decimal;
-        totalCostsAbs: Decimal;
-    };
-    _count?: {
-        cashFlows: number;
-        investments: number;
-    };
-}
+}>;
 
 export interface BondSummary {
     id: string;
@@ -90,133 +84,90 @@ export interface BondSummary {
 export class BondModel {
     constructor(private prisma: PrismaClient) {}
 
-    /**
-     * Crear un nuevo bono con todas sus relaciones
-     */
-    async create(data: CreateBondInput): Promise<BondWithRelations> {
-        // Validar datos de entrada
+    async create(data: CreateBondInput): Promise<BondWithFullRelations> {
         const validatedData = CreateBondSchema.parse(data);
 
-        // Calcular fecha de vencimiento
         const fechaVencimiento = new Date(validatedData.fechaEmision);
         fechaVencimiento.setFullYear(fechaVencimiento.getFullYear() + validatedData.numAnios);
 
-        // Calcular costes absolutos
-        const { costes } = validatedData;
-        const valorComercial = new Decimal(validatedData.valorComercial);
+        const { costes: costesInput, inflacionSerie, graciaSerie, ...directBondData } = validatedData;
 
-        const costesAbs = {
-            estructuracionAbs: valorComercial.mul(costes.estructuracionPct),
-            colocacionAbs: valorComercial.mul(costes.colocacionPct),
-            flotacionAbs: valorComercial.mul(costes.flotacionPct),
-            cavaliAbs: valorComercial.mul(costes.cavaliPct),
+        // Los campos de Zod que son `number` se pasarán como `number` a Prisma.
+        // Prisma Client se encargará de convertirlos a `Decimal` si el campo en la DB es `Decimal`.
+        // --- Corrección en el método create ---
+        const bondPayload: Prisma.BondCreateInput = {
+            ...directBondData,
+            fechaVencimiento,
+            emisor: { connect: { id: validatedData.emisorId } }, // <-- Añadir esta línea
+            // Otros campos...
         };
 
-        const emisorTotalAbs = costesAbs.estructuracionAbs
-            .plus(costesAbs.colocacionAbs)
-            .plus(costesAbs.flotacionAbs)
-            .plus(costesAbs.cavaliAbs);
+        const createdBondId = await this.prisma.$transaction(async (tx) => {
+            const bond = await tx.bond.create({ data: bondPayload });
 
-        const bonistaTotalAbs = costesAbs.flotacionAbs.plus(costesAbs.cavaliAbs);
-        const totalCostsAbs = emisorTotalAbs.plus(bonistaTotalAbs);
+            const valorComercialDecimal = new Decimal(validatedData.valorComercial);
+            const emisorTotalAbs = valorComercialDecimal.mul(costesInput.estructuracionPct)
+                .plus(valorComercialDecimal.mul(costesInput.colocacionPct))
+                .plus(valorComercialDecimal.mul(costesInput.flotacionPct))
+                .plus(valorComercialDecimal.mul(costesInput.cavaliPct));
+            const bonistaTotalAbs = valorComercialDecimal.mul(costesInput.flotacionPct)
+                .plus(valorComercialDecimal.mul(costesInput.cavaliPct));
 
-        return await this.prisma.$transaction(async (tx) => {
-            // Crear el bono
-            const bond = await tx.bond.create({
+            await tx.bondCosts.create({
                 data: {
-                    emisorId: validatedData.emisorId,
-                    name: validatedData.name,
-                    codigoIsin: validatedData.codigoIsin,
-                    status: BondStatus.DRAFT,
-                    valorNominal: validatedData.valorNominal,
-                    valorComercial: validatedData.valorComercial,
-                    numAnios: validatedData.numAnios,
-                    fechaEmision: validatedData.fechaEmision,
-                    fechaVencimiento,
-                    frecuenciaCupon: validatedData.frecuenciaCupon,
-                    baseDias: validatedData.baseDias,
-                    tipoTasa: validatedData.tipoTasa,
-                    periodicidadCapitalizacion: validatedData.periodicidadCapitalizacion,
-                    tasaAnual: validatedData.tasaAnual,
-                    indexadoInflacion: validatedData.indexadoInflacion,
-                    inflacionAnual: validatedData.inflacionAnual,
-                    primaVencimiento: validatedData.primaVencimiento,
-                    impuestoRenta: validatedData.impuestoRenta,
+                    bond: { connect: { id: bond.id } }, // Conectar con el bono
+                    estructuracionPct: costesInput.estructuracionPct, // Prisma convierte number a Decimal
+                    colocacionPct: costesInput.colocacionPct,
+                    flotacionPct: costesInput.flotacionPct,
+                    cavaliPct: costesInput.cavaliPct,
+                    emisorTotalAbs: emisorTotalAbs, // Pasar el Decimal directamente
+                    bonistaTotalAbs: bonistaTotalAbs, // Pasar el Decimal directamente
+                    totalCostsAbs: emisorTotalAbs.plus(bonistaTotalAbs), // Pasar el Decimal directamente
                 },
             });
 
-            // Crear costes
-            const costs = await tx.bondCosts.create({
-                data: {
-                    bondId: bond.id,
-                    estructuracionPct: costes.estructuracionPct,
-                    colocacionPct: costes.colocacionPct,
-                    flotacionPct: costes.flotacionPct,
-                    cavaliPct: costes.cavaliPct,
-                    emisorTotalAbs: emisorTotalAbs.toNumber(),
-                    bonistaTotalAbs: bonistaTotalAbs.toNumber(),
-                    totalCostsAbs: totalCostsAbs.toNumber(),
-                },
-            });
-
-            // Crear inputs de cálculo
             await tx.calculationInputs.create({
                 data: {
-                    bondId: bond.id,
+                    bond: { connect: { id: bond.id } }, // Conectar con el bono
                     inputsData: {
                         ...validatedData,
-                        fechaVencimiento,
+                        fechaVencimiento: fechaVencimiento.toISOString(),
                     },
-                    inflacionSerie: validatedData.inflacionSerie,
-                    graciaSerie: validatedData.graciaSerie,
+                    inflacionSerie: inflacionSerie,
+                    graciaSerie: graciaSerie,
                 },
             });
-
-            // Retornar el bono completo
-            return await this.findById(bond.id, tx);
+            return bond.id;
         });
+
+        const result = await this.findById(createdBondId);
+        if (!result) {
+            throw new Error('Error crítico: El bono recién creado no se pudo recuperar.');
+        }
+        return result;
     }
 
-    /**
-     * Buscar bono por ID con relaciones
-     */
-    async findById(id: string, tx?: any): Promise<BondWithRelations | null> {
+    async findById(id: string, tx?: Prisma.TransactionClient): Promise<BondWithFullRelations | null> {
         const client = tx || this.prisma;
-
         return await client.bond.findUnique({
             where: { id },
             include: {
-                emisor: {
-                    select: {
-                        companyName: true,
-                        ruc: true,
-                    },
-                },
+                emisor: { select: { companyName: true, ruc: true } },
                 costs: true,
-                _count: {
-                    select: {
-                        cashFlows: true,
-                        investments: true,
-                    },
-                },
+                _count: { select: { cashFlows: true, investments: true } },
             },
         });
     }
 
-    /**
-     * Listar bonos con filtros
-     */
     async findMany(filters: {
         emisorId?: string;
         status?: BondStatus;
         search?: string;
         limit?: number;
         offset?: number;
-    } = {}): Promise<BondWithRelations[]> {
+    } = {}): Promise<BondWithFullRelations[]> {
         const { emisorId, status, search, limit = 50, offset = 0 } = filters;
-
-        const where: any = {};
-
+        const where: Prisma.BondWhereInput = {};
         if (emisorId) where.emisorId = emisorId;
         if (status) where.status = status;
         if (search) {
@@ -229,19 +180,9 @@ export class BondModel {
         return await this.prisma.bond.findMany({
             where,
             include: {
-                emisor: {
-                    select: {
-                        companyName: true,
-                        ruc: true,
-                    },
-                },
+                emisor: { select: { companyName: true, ruc: true } },
                 costs: true,
-                _count: {
-                    select: {
-                        cashFlows: true,
-                        investments: true,
-                    },
-                },
+                _count: { select: { cashFlows: true, investments: true } },
             },
             orderBy: { createdAt: 'desc' },
             take: limit,
@@ -249,118 +190,194 @@ export class BondModel {
         });
     }
 
-    /**
-     * Actualizar bono
-     */
-    async update(id: string, data: UpdateBondInput): Promise<BondWithRelations> {
+    async update(id: string, data: UpdateBondInput): Promise<BondWithFullRelations> {
         const validatedData = UpdateBondSchema.parse(data);
+        const {
+            costes: costesInput,
+            inflacionSerie,
+            graciaSerie,
+            ...directBondDataToUpdate // Contiene solo los campos directos del modelo Bond que están en UpdateBondSchema
+        } = validatedData;
 
-        return await this.prisma.$transaction(async (tx) => {
-            // Actualizar bono principal
+        const bondUpdatePayload: Prisma.BondUpdateInput = {};
+        // Poblar selectivamente bondUpdatePayload solo con campos definidos en directBondDataToUpdate
+        for (const key of Object.keys(directBondDataToUpdate) as Array<keyof typeof directBondDataToUpdate>) {
+            if (directBondDataToUpdate[key] !== undefined) {
+                (bondUpdatePayload as any)[key] = directBondDataToUpdate[key];
+            }
+        }
+
+        // Recalcular fechaVencimiento si es necesario
+        if (bondUpdatePayload.fechaEmision || bondUpdatePayload.numAnios) {
+            const currentBond = await this.prisma.bond.findUnique({ where: { id }, select: { fechaEmision: true, numAnios: true } });
+            if (!currentBond) throw new Error('Bono no encontrado para actualizar fecha de vencimiento');
+
+            const newFechaEmision = (bondUpdatePayload.fechaEmision as Date | undefined) || currentBond.fechaEmision;
+            const newNumAnios = (bondUpdatePayload.numAnios as number | undefined) || currentBond.numAnios;
+
+            const fechaVencimiento = new Date(newFechaEmision);
+            fechaVencimiento.setFullYear(fechaVencimiento.getFullYear() + newNumAnios);
+            bondUpdatePayload.fechaVencimiento = fechaVencimiento;
+        }
+
+        const updatedBondId = await this.prisma.$transaction(async (tx) => {
             await tx.bond.update({
                 where: { id },
-                data: {
-                    ...validatedData,
-                    costs: undefined, // Excluir costes del update principal
-                    inflacionSerie: undefined,
-                    graciaSerie: undefined,
-                },
+                data: bondUpdatePayload,
             });
 
-            // Actualizar costes si se proporcionan
-            if (validatedData.costes) {
-                const bond = await tx.bond.findUnique({ where: { id } });
-                if (!bond) throw new Error('Bono no encontrado');
+            if (costesInput) {
+                const bondForCostUpdate = await tx.bond.findUnique({ where: { id }, select: { valorComercial: true } });
+                if (!bondForCostUpdate) throw new Error('Bono no encontrado para actualizar costes');
 
-                const valorComercial = new Decimal(validatedData.valorComercial || bond.valorComercial);
-                const { costes } = validatedData;
+                // Usar el valorComercial del input de costes si se proporciona, sino el actual del bono
+                const valorComercialParaCostes = costesInput.valorComercial !== undefined
+                    ? new Decimal(costesInput.valorComercial)
+                    : bondForCostUpdate.valorComercial; // bondForCostUpdate.valorComercial ya es Decimal
 
-                const emisorTotalAbs = new Decimal(costes.estructuracionPct || 0)
-                    .plus(costes.colocacionPct || 0)
-                    .plus(costes.flotacionPct || 0)
-                    .plus(costes.cavaliPct || 0)
-                    .mul(valorComercial);
+                const estructuracionPct = costesInput.estructuracionPct ?? 0;
+                const colocacionPct = costesInput.colocacionPct ?? 0;
+                const flotacionPct = costesInput.flotacionPct ?? 0;
+                const cavaliPct = costesInput.cavaliPct ?? 0;
 
-                const bonistaTotalAbs = new Decimal(costes.flotacionPct || 0)
-                    .plus(costes.cavaliPct || 0)
-                    .mul(valorComercial);
+                const emisorTotalAbs = valorComercialParaCostes.mul(estructuracionPct)
+                    .plus(valorComercialParaCostes.mul(colocacionPct))
+                    .plus(valorComercialParaCostes.mul(flotacionPct))
+                    .plus(valorComercialParaCostes.mul(cavaliPct));
 
-                await tx.bondCosts.update({
+                const bonistaTotalAbs = valorComercialParaCostes.mul(flotacionPct)
+                    .plus(valorComercialParaCostes.mul(cavaliPct));
+
+                const costsUpdateData: Prisma.BondCostsUpdateInput = {
+                    estructuracionPct: costesInput.estructuracionPct,
+                    colocacionPct: costesInput.colocacionPct,
+                    flotacionPct: costesInput.flotacionPct,
+                    cavaliPct: costesInput.cavaliPct,
+                    emisorTotalAbs: emisorTotalAbs,
+                    bonistaTotalAbs: bonistaTotalAbs,
+                    totalCostsAbs: emisorTotalAbs.plus(bonistaTotalAbs),
+                };
+                // Remover campos undefined de costsUpdateData para que Prisma no intente poner null donde no debe
+                Object.keys(costsUpdateData).forEach(key =>
+                    (costsUpdateData as any)[key] === undefined && delete (costsUpdateData as any)[key]
+                );
+
+                await tx.bondCosts.upsert({
                     where: { bondId: id },
-                    data: {
-                        estructuracionPct: costes.estructuracionPct,
-                        colocacionPct: costes.colocacionPct,
-                        flotacionPct: costes.flotacionPct,
-                        cavaliPct: costes.cavaliPct,
-                        emisorTotalAbs: emisorTotalAbs.toNumber(),
-                        bonistaTotalAbs: bonistaTotalAbs.toNumber(),
-                        totalCostsAbs: emisorTotalAbs.plus(bonistaTotalAbs).toNumber(),
+                    update: costsUpdateData,
+                    create: {
+                        bond: { connect: { id: id } },
+                        estructuracionPct: estructuracionPct,
+                        colocacionPct: colocacionPct,
+                        flotacionPct: flotacionPct,
+                        cavaliPct: cavaliPct,
+                        emisorTotalAbs: emisorTotalAbs,
+                        bonistaTotalAbs: bonistaTotalAbs,
+                        totalCostsAbs: emisorTotalAbs.plus(bonistaTotalAbs),
                     },
                 });
             }
 
-            // Actualizar inputs de cálculo si se proporcionan series
-            if (validatedData.inflacionSerie || validatedData.graciaSerie) {
+            const calculationInputsUpdateData: Prisma.CalculationInputsUpdateInput = {};
+            let needsCalcUpdate = false;
+
+            if (inflacionSerie !== undefined) {
+                calculationInputsUpdateData.inflacionSerie = inflacionSerie;
+                needsCalcUpdate = true;
+            }
+            if (graciaSerie !== undefined) {
+                calculationInputsUpdateData.graciaSerie = graciaSerie;
+                needsCalcUpdate = true;
+            }
+
+            // Reconstruir inputsData para CalculationInputs si algún campo relevante del bono cambió
+            // o si las series cambiaron (para mantener inputsData actualizado)
+            const bondSnapshotForCalcInputs = await tx.bond.findUnique({where: {id}});
+            if (bondSnapshotForCalcInputs && (needsCalcUpdate || Object.keys(bondUpdatePayload).length > 0)) {
+                // Crear un objeto con los datos actuales del bono y los actualizados por validatedData
+                const currentInputsData: any = { // Podría ser un tipo más específico
+                    emisorId: bondSnapshotForCalcInputs.emisorId,
+                    name: bondSnapshotForCalcInputs.name,
+                    codigoIsin: bondSnapshotForCalcInputs.codigoIsin,
+                    valorNominal: bondSnapshotForCalcInputs.valorNominal.toNumber(), // Convertir Decimal a number
+                    valorComercial: bondSnapshotForCalcInputs.valorComercial.toNumber(),
+                    numAnios: bondSnapshotForCalcInputs.numAnios,
+                    fechaEmision: bondSnapshotForCalcInputs.fechaEmision.toISOString(),
+                    frecuenciaCupon: bondSnapshotForCalcInputs.frecuenciaCupon,
+                    baseDias: bondSnapshotForCalcInputs.baseDias,
+                    tipoTasa: bondSnapshotForCalcInputs.tipoTasa,
+                    periodicidadCapitalizacion: bondSnapshotForCalcInputs.periodicidadCapitalizacion,
+                    tasaAnual: bondSnapshotForCalcInputs.tasaAnual.toNumber(),
+                    indexadoInflacion: bondSnapshotForCalcInputs.indexadoInflacion,
+                    inflacionAnual: bondSnapshotForCalcInputs.inflacionAnual?.toNumber(),
+                    primaVencimiento: bondSnapshotForCalcInputs.primaVencimiento.toNumber(),
+                    impuestoRenta: bondSnapshotForCalcInputs.impuestoRenta.toNumber(),
+                    fechaVencimiento: bondSnapshotForCalcInputs.fechaVencimiento.toISOString(),
+                    // NO incluir costes, inflacionSerie, graciaSerie aquí si ya están en validatedData
+                };
+
+                // Sobrescribir con los valores de validatedData que no son para relaciones
+                const relevantValidatedDataForInputs: Partial<CreateBondInput> = { ...directBondDataToUpdate };
+                if (validatedData.fechaEmision) relevantValidatedDataForInputs.fechaEmision = validatedData.fechaEmision;
+                if (bondUpdatePayload.fechaVencimiento) (relevantValidatedDataForInputs as any).fechaVencimiento = bondUpdatePayload.fechaVencimiento;
+
+
+                calculationInputsUpdateData.inputsData = {
+                    ...currentInputsData,
+                    // Convertir Dates a ISOString y numbers donde sea necesario si Zod los maneja como Date/number
+                    ...(Object.fromEntries(Object.entries(relevantValidatedDataForInputs).map(([key, value]) => {
+                        if (value instanceof Date) return [key, value.toISOString()];
+                        // Podrías necesitar convertir Decimal a number aquí si Zod usa number
+                        return [key, value];
+                    }))),
+                    // Asegurar que las series que se guardan en inputsData son las actualizadas
+                    inflacionSerie: inflacionSerie !== undefined ? inflacionSerie : (await tx.calculationInputs.findUnique({where: {bondId:id}}))?.inflacionSerie,
+                    graciaSerie: graciaSerie !== undefined ? graciaSerie : (await tx.calculationInputs.findUnique({where: {bondId:id}}))?.graciaSerie,
+
+                };
+                needsCalcUpdate = true;
+            }
+
+
+            if (needsCalcUpdate) {
                 await tx.calculationInputs.update({
                     where: { bondId: id },
-                    data: {
-                        inflacionSerie: validatedData.inflacionSerie,
-                        graciaSerie: validatedData.graciaSerie,
-                    },
+                    data: calculationInputsUpdateData,
                 });
             }
-
-            return await this.findById(id, tx);
+            return id;
         });
+
+        const result = await this.findById(updatedBondId);
+        if (!result) {
+            throw new Error('Error crítico: El bono recién actualizado no se pudo recuperar.');
+        }
+        return result;
     }
 
-    /**
-     * Cambiar estado del bono
-     */
-    async updateStatus(id: string, status: BondStatus): Promise<void> {
-        await this.prisma.bond.update({
+    async updateStatus(id: string, status: BondStatus): Promise<PrismaBond> {
+        return await this.prisma.bond.update({
             where: { id },
             data: { status },
         });
     }
 
-    /**
-     * Eliminar bono (soft delete cambiando status)
-     */
-    async delete(id: string): Promise<void> {
-        await this.prisma.bond.update({
+    async delete(id: string): Promise<PrismaBond> {
+        return await this.prisma.bond.update({
             where: { id },
             data: { status: BondStatus.EXPIRED },
         });
     }
 
-    /**
-     * Obtener resumen de bonos para dashboard
-     */
     async getBondsSummary(emisorId?: string): Promise<BondSummary[]> {
-        const where = emisorId ? { emisorId } : {};
-
+        const where: Prisma.BondWhereInput = emisorId ? { emisorId } : {};
         const bonds = await this.prisma.bond.findMany({
             where,
             select: {
-                id: true,
-                name: true,
-                status: true,
-                valorNominal: true,
-                valorComercial: true,
-                tasaAnual: true,
-                fechaEmision: true,
-                fechaVencimiento: true,
-                emisor: {
-                    select: {
-                        companyName: true,
-                    },
-                },
-                _count: {
-                    select: {
-                        investments: true,
-                    },
-                },
+                id: true, name: true, status: true, valorNominal: true, valorComercial: true,
+                tasaAnual: true, fechaEmision: true, fechaVencimiento: true,
+                emisor: { select: { companyName: true } },
+                _count: { select: { investments: true } },
             },
             orderBy: { createdAt: 'desc' },
         });
@@ -374,81 +391,52 @@ export class BondModel {
             tasaAnual: bond.tasaAnual.toNumber(),
             fechaEmision: bond.fechaEmision,
             fechaVencimiento: bond.fechaVencimiento,
-            emisor: bond.emisor.companyName,
-            investorsCount: bond._count.investments,
+            emisor: bond.emisor?.companyName || 'N/A',
+            investorsCount: bond._count?.investments || 0,
         }));
     }
 
-    /**
-     * Obtener bonos disponibles para inversión
-     */
     async getAvailableBonds(): Promise<BondSummary[]> {
-        return this.getBondsSummary().then(bonds =>
-            bonds.filter(bond => bond.status === BondStatus.ACTIVE)
-        );
+        const summaries = await this.getBondsSummary();
+        return summaries.filter(bond => bond.status === BondStatus.ACTIVE);
     }
 
-    /**
-     * Validar que el bono pueda ser modificado
-     */
     async canModify(id: string): Promise<boolean> {
         const bond = await this.prisma.bond.findUnique({
             where: { id },
-            select: {
-                status: true,
-                _count: {
-                    select: {
-                        investments: true,
-                    },
-                },
-            },
+            select: { status: true, _count: { select: { investments: true } } },
         });
-
         if (!bond) return false;
-
-        // Solo se puede modificar si está en borrador y no tiene inversiones
-        return bond.status === BondStatus.DRAFT && bond._count.investments === 0;
+        return bond.status === BondStatus.DRAFT && (bond._count?.investments || 0) === 0;
     }
 
-    /**
-     * Obtener estadísticas del bono
-     */
     async getStats(id: string) {
-        const stats = await this.prisma.bond.findUnique({
+        const statsData = await this.prisma.bond.findUnique({
             where: { id },
             select: {
-                valorNominal: true,
-                valorComercial: true,
-                status: true,
+                valorNominal: true, valorComercial: true, status: true,
                 investments: {
-                    select: {
-                        montoInvertido: true,
-                        status: true,
-                    },
+                    where: { status: 'ACTIVE' },
+                    select: { montoInvertido: true },
                 },
-                costs: {
-                    select: {
-                        totalCostsAbs: true,
-                    },
-                },
+                costs: { select: { totalCostsAbs: true } },
             },
         });
+        if (!statsData) return null;
 
-        if (!stats) return null;
-
-        const activeInvestments = stats.investments.filter(i => i.status === 'ACTIVE');
-        const totalInvested = activeInvestments.reduce(
-            (sum, inv) => sum.plus(inv.montoInvertido),
-            new Decimal(0)
+        const totalInvested = statsData.investments.reduce(
+            (sum, inv) => sum.plus(inv.montoInvertido), new Decimal(0)
         );
 
         return {
-            valorNominal: stats.valorNominal.toNumber(),
-            valorComercial: stats.valorComercial.toNumber(),
+            valorNominal: statsData.valorNominal.toNumber(),
+            valorComercial: statsData.valorComercial.toNumber(),
             totalInvestido: totalInvested.toNumber(),
-            numeroInversores: activeInvestments.length,
-            costosTotales: stats.costs?.totalCostsAbs.toNumber() || 0,
-            porcentajeColocado: totalInvested.div(stats.valorComercial).mul(100).toNumber(),
+            numeroInversores: statsData.investments.length,
+            costosTotales: statsData.costs?.totalCostsAbs?.toNumber() || 0,
+            porcentajeColocado: statsData.valorComercial.isZero()
+                ? 0
+                : totalInvested.div(statsData.valorComercial).mul(100).toDecimalPlaces(2).toNumber(), // dp(2) para 2 decimales
         };
     }
 }

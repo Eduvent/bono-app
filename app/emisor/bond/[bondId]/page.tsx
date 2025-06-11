@@ -7,9 +7,9 @@ import Chart from "chart.js/auto"
 import { formatCurrency, formatDate, formatPercent } from "@/utils/format"
 
 interface BondDetailProps {
-  params: {
+  params: Promise<{
     bondId: string
-  }
+  }>
 }
 
 interface BondData {
@@ -55,7 +55,8 @@ interface BondData {
   }>
 }
 
-export default function BondDetailPage({ params }: BondDetailProps) {
+export default async function BondDetailPage({ params }: BondDetailProps) {
+  const { bondId } = await params;
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<"summary" | "flows" | "analytics">("summary")
   const [bondData, setBondData] = useState<BondData | null>(null)
@@ -77,7 +78,7 @@ export default function BondDetailPage({ params }: BondDetailProps) {
 
       // Mock data for the bond
       const mockBondData: BondData = {
-        id: params.bondId,
+        id: (await params).bondId,
         name: "Bono VAC - Americano",
         status: "active",
         issuer: "Empresa Ejemplo S.A.C.",
@@ -266,7 +267,7 @@ export default function BondDetailPage({ params }: BondDetailProps) {
     }
 
     fetchBondData()
-  }, [params.bondId])
+  }, [(await params).bondId])
 
   useEffect(() => {
     if (!bondData) return
@@ -319,7 +320,7 @@ export default function BondDetailPage({ params }: BondDetailProps) {
               },
               tooltip: {
                 callbacks: {
-                  label: (context) => `${context.label}: ${context.raw.toFixed(2)}`,
+                  label: (context) => `${context.label}: ${(context.raw as number).toFixed(2)}`,
                 },
               },
             },
@@ -427,7 +428,7 @@ export default function BondDetailPage({ params }: BondDetailProps) {
               },
               tooltip: {
                 callbacks: {
-                  label: (context) => `${context.dataset.label}: ${context.raw.toLocaleString()}`,
+                  label: (context) => `${context.dataset.label}: ${(context.raw as number).toLocaleString()}`,
                 },
               },
             },

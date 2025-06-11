@@ -1,6 +1,6 @@
 // scripts/calculate-bonds.ts
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../lib/generated/client'
 import { BondCalculationsService } from '@/lib/services/bonds/BondCalculations';
 import { FinancialCalculator } from '@/lib/services/calculations/FinancialCalculator';
 import { CalculationInputs } from '@/lib/types/calculations';

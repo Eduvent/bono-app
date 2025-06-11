@@ -372,7 +372,7 @@ export function useFilteredCashFlows(
             return (
                 flow.periodo.toString().includes(searchLower) ||
                 flow.fecha.includes(searchLower) ||
-                flow.periodoGracia?.toLowerCase().includes(searchLower)
+                ('periodoGracia' in flow && flow.periodoGracia?.toLowerCase().includes(searchLower))
             );
         });
     }, [flows, searchTerm]);

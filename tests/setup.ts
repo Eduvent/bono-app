@@ -1,6 +1,6 @@
 // tests/setup.ts
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../lib/generated/client'
 import { Decimal } from 'decimal.js';
 
 /**

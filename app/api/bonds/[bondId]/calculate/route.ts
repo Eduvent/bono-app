@@ -1,7 +1,7 @@
 // app/api/bonds/[bondId]/calculate/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../../../../../lib/generated/client'
 import { BondCalculationsService } from '@/lib/services/bonds/BondCalculations';
 import { z } from 'zod';
 

@@ -2,6 +2,7 @@
 
 import { FinancialCalculator } from '@/lib/services/calculations/FinancialCalculator';
 import { CalculationInputs } from '@/lib/types/calculations';
+import Decimal from 'decimal.js';
 
 /**
  * Ejemplo completo de uso del motor de cálculos financieros
@@ -48,6 +49,7 @@ async function ejemploCalculoBono() {
         includeIntermediateSteps: true,
         precision: {
             decimalPlaces: 6,
+            roundingMode: Decimal.ROUND_HALF_UP,  // 👈 Agregar esta línea
             tolerance: 1e-8
         }
     });
@@ -64,7 +66,7 @@ async function ejemploCalculoBono() {
 
         // 4. Mostrar resultados principales
         console.log('📊 RESULTADOS PRINCIPALES:');
-        console.log('=' * 50);
+        console.log('='.repeat(50));
 
         // Cálculos intermedios
         const { intermedios } = resultado;
@@ -94,9 +96,9 @@ async function ejemploCalculoBono() {
 
         // 5. Mostrar tabla de flujos (primeros y últimos períodos)
         console.log('\n📋 TABLA DE FLUJOS (Resumen):');
-        console.log('=' * 80);
+        console.log('='.repeat(80));
         console.log('Per | Fecha      | Bono Index | Cupón    | Amort.   | Flujo Emis | Flujo Bon');
-        console.log('-' * 80);
+        console.log('-'.repeat(80));
 
         // Período 0
         const p0 = resultado.flujos[0];
@@ -118,7 +120,7 @@ async function ejemploCalculoBono() {
 
         // 6. Validar contra valores esperados del Excel
         console.log('\n✅ VALIDACIÓN CONTRA EXCEL:');
-        console.log('=' * 40);
+        console.log('='.repeat(40) );
 
         const validations = [
             { name: 'Precio Actual', calculated: metricas.precioActual, expected: 1753.34, tolerance: 1 },
@@ -137,7 +139,7 @@ async function ejemploCalculoBono() {
 
         // 7. Mostrar información de roles
         console.log('\n👥 VISTA POR ROLES:');
-        console.log('=' * 30);
+        console.log('='.repeat(30));
 
         console.log('\n🏢 EMISOR ve:');
         console.log(`  • Flujos de emisión (M): ${resultado.flujos.slice(1, 4).map(f => formatMoney(f.flujoEmisor)).join(', ')}...`);

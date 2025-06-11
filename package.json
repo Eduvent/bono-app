@@ -4,9 +4,31 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "setup": "tsx scripts/setup.ts",
+    "setup:auto": "tsx scripts/setup.ts -- --auto",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:calculations": "jest tests/unit/calculations.test.ts --verbose",
+    "test:coverage": "jest --coverage",
+    "example:calculator": "tsx examples/calculator-usage.ts",
+    "validate:excel": "pnpm run test:calculations",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:seed": "tsx scripts/migrate.ts --no-validate",
+    "db:reset": "tsx scripts/migrate.ts --reset --force",
+    "calculate:bonds": "tsx scripts/calculate-bonds.ts",
+    "calculate:benchmark": "tsx scripts/calculate-bonds.ts --all --parallel --export",
+    "type-check": "tsc --noEmit",
+    "type-check:watch": "tsc --noEmit --watch",
+    "prisma:generate": "prisma generate",
+    "prisma:studio": "prisma studio",
+    "prisma:migrate:dev": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:db:push": "prisma db push",
+    "prisma:db:seed": "tsx prisma/seed.ts",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -38,15 +60,16 @@
     "@radix-ui/react-toggle": "1.1.1",
     "@radix-ui/react-toggle-group": "1.1.1",
     "@radix-ui/react-tooltip": "1.1.6",
-    "autoprefixer": "^10.4.20",
+    "bcryptjs": "^3.0.2",
     "chart.js": "latest",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "1.0.4",
-    "date-fns": "4.1.0",
+    "date-fns": "^3.0.0",
     "decimal.js": "^10.5.0",
     "embla-carousel-react": "8.5.1",
     "input-otp": "1.4.1",
+    "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.454.0",
     "next": "15.2.4",
     "next-themes": "^0.4.4",
@@ -64,13 +87,42 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^3.0.0",
     "@types/jest": "^29.5.14",
+    "@types/jsonwebtoken": "^9.0.9",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "autoprefixer": "^10.4.20",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
     "postcss": "^8.5",
     "prisma": "^6.9.0",
     "tailwindcss": "^3.4.17",
+    "ts-jest": "^29.1.2",
+    "tsx": "^4.7.0",
     "typescript": "^5"
+  },
+  "prisma": {
+    "schema": "lib/database/schema.prisma"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "roots": [
+      "<rootDir>/lib",
+      "<rootDir>/tests"
+    ],
+    "testMatch": [
+      "**/tests/**/*.test.ts",
+      "**/__tests__/**/*.test.ts"
+    ],
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/$1"
+    },
+    "setupFilesAfterEnv": [
+      "<rootDir>/tests/setup.ts"
+    ],
+    "testTimeout": 30000
   }
 }
