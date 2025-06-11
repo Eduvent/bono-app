@@ -55,13 +55,13 @@ export function loadDatabaseConfig(): DatabaseConfig {
  */
 export const dbConfig = {
     development: {
-        DATABASE_URL: process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5432/bonos_dev',
+        DATABASE_URL: process.env.DATABASE_URL || 'postgresql://postgres:123456@localhost:5432/bonos_dev',
         logging: true,
         synchronize: false, // Usar migraciones siempre
     },
 
     test: {
-        DATABASE_URL: process.env.DATABASE_TEST_URL || 'postgresql://postgres:password@localhost:5432/bonos_test',
+        DATABASE_URL: process.env.DATABASE_TEST_URL || 'postgresql://postgres:123456@localhost:5432/bonos_test',
         logging: false,
         synchronize: false,
     },

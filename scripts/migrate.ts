@@ -340,7 +340,7 @@ async function seedDatabase() {
                 precioCompra: 1050.00,
                 status: 'ACTIVE',
                 gananciaNoRealizada: 2500.00,
-                rendimiento: 0.05,
+                rendimientoActual: 0.05,
             }
         });
 

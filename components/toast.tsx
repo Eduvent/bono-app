@@ -1,5 +1,3 @@
-"use client"
-
 import { CheckCircle, AlertCircle } from "lucide-react"
 import { useEffect } from "react"
 

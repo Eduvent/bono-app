@@ -29,8 +29,11 @@ let prisma: PrismaClient;
 
 beforeAll(async () => {
     // Configurar variables de entorno para tests
-    process.env.NODE_ENV = 'test';
-    process.env.DATABASE_URL = process.env.DATABASE_TEST_URL || 'postgresql://postgres:password@localhost:5432/bonos_test';
+    Object.defineProperty(process.env, 'NODE_ENV', {
+        value: 'test',
+        writable: true
+    });
+    process.env.DATABASE_URL = process.env.DATABASE_TEST_URL || 'postgresql://postgres:123456@localhost:5432/bonos_test';
 
     // Crear cliente de Prisma
     prisma = new PrismaClient({

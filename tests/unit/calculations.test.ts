@@ -1,6 +1,5 @@
 // tests/unit/calculations.test.ts
 
-import { describe, test, expect, beforeAll } from '@jest/globals';
 import { FinancialCalculator } from '@/lib/services/calculations/FinancialCalculator';
 import { ExcelFormulas } from '@/lib/services/calculations/ExcelFormulas';
 import { CalculationInputs } from '@/lib/types/calculations';
@@ -38,8 +37,7 @@ const EXCEL_TEST_INPUTS: CalculationInputs = {
 
     // Series (5 años = 10 períodos semestrales, pero input anual)
     inflacionSerie: [0.10, 0.10, 0.10, 0.10, 0.10], // 10% anual cada año
-    graciaSerie: ['S', 'S', 'S', 'S', 'S'] // Sin gracia todos los años
-};
+    graciaSerie: ['S', 'S', 'S', 'S', 'S'] as const};
 
 // Resultados esperados del Excel (exactos)
 const EXCEL_EXPECTED_RESULTS = {
@@ -312,7 +310,7 @@ describe('FinancialCalculator - Excel Validation Tests', () => {
         test('Debe manejar gracia total', async () => {
             const inputs = {
                 ...EXCEL_TEST_INPUTS,
-                graciaSerie: ['T', 'T', 'T', 'T', 'T'] // Gracia total todos los años
+                graciaSerie: ['T', 'T', 'T', 'T', 'T'] as typeof EXCEL_TEST_INPUTS.graciaSerie
             };
 
             const result = await calculator.calculate(inputs);
@@ -328,7 +326,7 @@ describe('FinancialCalculator - Excel Validation Tests', () => {
                 ...EXCEL_TEST_INPUTS,
                 numAnios: 1,
                 inflacionSerie: [0.10],
-                graciaSerie: ['S']
+                graciaSerie: ['S'] as typeof EXCEL_TEST_INPUTS.graciaSerie
             };
 
             const result = await calculator.calculate(inputs);
@@ -372,3 +370,4 @@ describe('Performance Tests', () => {
         expect(third.metricas.treaBonista).toBe(first.metricas.treaBonista);
     });
 });
+
