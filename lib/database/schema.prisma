@@ -1,0 +1,300 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =====================================================
+// USUARIOS Y PERFILES
+// =====================================================
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  lastLogin    DateTime? @map("last_login")
+
+  // Relaciones
+  emisorProfile        EmisorProfile?
+  inversionistaProfile InversionistaProfile?
+  investments          UserInvestment[]     @relation("UserToInvestments") // Enlazado con UserInvestment.user
+  auditLogs            AuditLog[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  EMISOR
+  INVERSIONISTA
+
+  @@map("user_role")
+}
+
+model EmisorProfile {
+  id            String   @id @default(cuid())
+  userId        String   @unique @map("user_id")
+  companyName   String   @map("company_name")
+  ruc           String   @unique
+  contactPerson String   @map("contact_person")
+  phone         String?
+  address       String?
+  industry      String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bonds Bond[]
+
+  @@map("emisor_profiles")
+}
+
+model InversionistaProfile {
+  id                String   @id @default(cuid())
+  userId            String   @unique @map("user_id")
+  firstName         String   @map("first_name")
+  lastName          String   @map("last_name")
+  phone             String?
+  investmentProfile String   @map("investment_profile")
+  riskTolerance     Decimal  @map("risk_tolerance") @db.Decimal(3, 2) // 0.00 a 1.00
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  investments UserInvestment[] @relation("InversionistaProfileToInvestments") // Enlazado con UserInvestment.inversionista
+
+  @@map("inversionista_profiles")
+}
+
+// =====================================================
+// BONOS Y CONFIGURACIÓN
+// =====================================================
+
+model Bond {
+  id                         String            @id @default(cuid())
+  emisorId                   String            @map("emisor_id")
+  name                       String
+  codigoIsin                 String?           @unique @map("codigo_isin")
+  status                     BondStatus        @default(DRAFT)
+
+  valorNominal               Decimal           @map("valor_nominal") @db.Decimal(15, 2)
+  valorComercial             Decimal           @map("valor_comercial") @db.Decimal(15, 2)
+  numAnios                   Int               @map("num_anios")
+  fechaEmision               DateTime          @map("fecha_emision") @db.Date
+  fechaVencimiento           DateTime          @map("fecha_vencimiento") @db.Date
+  frecuenciaCupon            FrequenciaCupon   @map("frecuencia_cupon")
+  baseDias                   Int               @map("base_dias")
+
+  tipoTasa                   TipoTasa          @map("tipo_tasa")
+  periodicidadCapitalizacion String            @map("periodicidad_capitalizacion")
+  tasaAnual                  Decimal           @map("tasa_anual") @db.Decimal(8, 6)
+  indexadoInflacion          Boolean           @default(false) @map("indexado_inflacion")
+  inflacionAnual             Decimal?          @map("inflacion_anual") @db.Decimal(6, 4)
+  primaVencimiento           Decimal           @default(0) @map("prima_vencimiento") @db.Decimal(6, 4)
+  impuestoRenta              Decimal           @map("impuesto_renta") @db.Decimal(4, 3)
+
+  createdAt                  DateTime          @default(now()) @map("created_at")
+  updatedAt                  DateTime          @updatedAt @map("updated_at")
+
+  // Relaciones
+  emisor             EmisorProfile      @relation(fields: [emisorId], references: [id], onDelete: Cascade)
+  costs              BondCosts?
+  cashFlows          CashFlow[]
+  financialMetrics   FinancialMetrics[]
+  investments        UserInvestment[]   @relation("BondToInvestments") // Enlazado con UserInvestment.bond
+  calculationInputs  CalculationInputs?
+  calculationResults CalculationResult[]
+
+  @@map("bonds")
+}
+
+enum BondStatus {
+  DRAFT
+  ACTIVE
+  EXPIRED
+  @@map("bond_status")
+}
+
+enum FrequenciaCupon {
+  MENSUAL
+  BIMESTRAL
+  TRIMESTRAL
+  CUATRIMESTRAL
+  SEMESTRAL
+  ANUAL
+  @@map("frecuencia_cupon")
+}
+
+enum TipoTasa {
+  EFECTIVA
+  NOMINAL
+  @@map("tipo_tasa")
+}
+
+model BondCosts {
+  id                String   @id @default(cuid())
+  bondId            String   @unique @map("bond_id")
+  estructuracionPct Decimal  @map("estructuracion_pct") @db.Decimal(6, 4)
+  colocacionPct     Decimal  @map("colocacion_pct") @db.Decimal(6, 4)
+  flotacionPct      Decimal  @map("flotacion_pct") @db.Decimal(6, 4)
+  cavaliPct        Decimal  @map("cavali_pct") @db.Decimal(6, 4)
+  emisorTotalAbs    Decimal  @map("emisor_total_abs") @db.Decimal(15, 2)
+  bonistaTotalAbs   Decimal  @map("bonista_total_abs") @db.Decimal(15, 2)
+  totalCostsAbs     Decimal  @map("total_costs_abs") @db.Decimal(15, 2)
+  createdAt         DateTime @default(now()) @map("created_at")
+  bond              Bond     @relation(fields: [bondId], references: [id], onDelete: Cascade)
+  @@map("bond_costs")
+}
+
+model CashFlow {
+  id                   String   @id @default(cuid())
+  bondId               String   @map("bond_id")
+  periodo              Int
+  fecha                DateTime @db.Date
+  inflacionAnual       Decimal? @map("inflacion_anual") @db.Decimal(8, 6)
+  inflacionSemestral   Decimal? @map("inflacion_semestral") @db.Decimal(8, 6)
+  periodoGracia        String?  @map("periodo_gracia")
+  bonoCapital          Decimal? @map("bono_capital") @db.Decimal(15, 2)
+  bonoIndexado         Decimal? @map("bono_indexado") @db.Decimal(15, 2)
+  cupon                Decimal? @map("cupon") @db.Decimal(15, 2)
+  amortizacion         Decimal? @map("amortizacion") @db.Decimal(15, 2)
+  cuota                Decimal? @map("cuota") @db.Decimal(15, 2)
+  prima                Decimal? @map("prima") @db.Decimal(15, 2)
+  escudoFiscal         Decimal? @map("escudo_fiscal") @db.Decimal(15, 2)
+  flujoEmisor          Decimal? @map("flujo_emisor") @db.Decimal(15, 2)
+  flujoEmisorConEscudo Decimal? @map("flujo_emisor_con_escudo") @db.Decimal(15, 2)
+  flujoBonista         Decimal? @map("flujo_bonista") @db.Decimal(15, 2)
+  flujoActualizado     Decimal? @map("flujo_actualizado") @db.Decimal(15, 2)
+  faPlazoPonderado     Decimal? @map("fa_plazo_ponderado") @db.Decimal(15, 6)
+  factorConvexidad     Decimal? @map("factor_convexidad") @db.Decimal(15, 6)
+  createdAt            DateTime @default(now()) @map("created_at")
+  bond                 Bond     @relation(fields: [bondId], references: [id], onDelete: Cascade)
+  @@unique([bondId, periodo])
+  @@map("cash_flows")
+}
+
+model FinancialMetrics {
+  id                  String      @id @default(cuid())
+  bondId              String      @map("bond_id")
+  role                MetricsRole
+  precioActual        Decimal     @map("precio_actual") @db.Decimal(15, 2)
+  utilidadPerdida     Decimal     @map("utilidad_perdida") @db.Decimal(15, 2)
+  van                 Decimal     @map("van") @db.Decimal(15, 2)
+  duracion            Decimal     @map("duracion") @db.Decimal(8, 4)
+  duracionModificada  Decimal     @map("duracion_modificada") @db.Decimal(8, 4)
+  convexidad          Decimal     @map("convexidad") @db.Decimal(8, 4)
+  totalRatiosDecision Decimal     @map("total_ratios_decision") @db.Decimal(8, 4)
+  tir                 Decimal     @map("tir") @db.Decimal(8, 6)
+  tcea                Decimal?    @map("tcea") @db.Decimal(8, 6)
+  tceaConEscudo       Decimal?    @map("tcea_con_escudo") @db.Decimal(8, 6)
+  trea                Decimal?    @map("trea") @db.Decimal(8, 6)
+  fechaCalculo        DateTime    @map("fecha_calculo") @db.Date
+  createdAt           DateTime    @default(now()) @map("created_at")
+  bond                Bond        @relation(fields: [bondId], references: [id], onDelete: Cascade)
+  @@unique([bondId, role])
+  @@map("financial_metrics")
+}
+
+enum MetricsRole {
+  EMISOR
+  BONISTA
+  @@map("metrics_role")
+}
+
+// =====================================================
+// INVERSIONES DE USUARIOS
+// =====================================================
+
+model UserInvestment {
+  id                  String           @id @default(cuid())
+  userId              String           @map("user_id")
+  bondId              String           @map("bond_id")
+  montoInvertido      Decimal          @map("monto_invertido") @db.Decimal(15, 2)
+  fechaInversion      DateTime         @map("fecha_inversion") @db.Date
+  precioCompra        Decimal          @map("precio_compra") @db.Decimal(15, 6)
+  status              InvestmentStatus @default(ACTIVE)
+  gananciaNoRealizada Decimal          @default(0) @map("ganancia_no_realizada") @db.Decimal(15, 2)
+  rendimientoActual   Decimal          @default(0) @map("rendimiento_actual") @db.Decimal(8, 6)
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+
+  // Relaciones
+  // El `name` debe coincidir con el del otro lado de la relación.
+  // El `map` en `@relation` define el nombre de la restricción FK en la BD.
+  user User @relation(name: "UserToInvestments", fields: [userId], references: [id], onDelete: Cascade, map: "user_investment_user_fk")
+  bond Bond @relation(name: "BondToInvestments", fields: [bondId], references: [id], onDelete: Cascade, map: "user_investment_bond_fk")
+  inversionista InversionistaProfile @relation(name: "InversionistaProfileToInvestments", fields: [userId], references: [userId], onDelete: Cascade, map: "user_investment_inversionista_profile_fk")
+
+  @@unique([userId, bondId]) // Esta restricción unique podría entrar en conflicto con la FK a InversionistaProfile si un usuario solo puede tener un perfil de inversionista.
+  // Si un User solo puede tener un InversionistaProfile, y userId es unique en InversionistaProfile,
+  // entonces UserInvestment.userId referenciando InversionistaProfile.userId es una forma de enlazarlo.
+  // La restricción @@unique([userId, bondId]) está bien para asegurar que un usuario no invierta múltiples veces en el mismo bono.
+  @@map("user_investments")
+}
+
+enum InvestmentStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  @@map("investment_status")
+}
+
+// =====================================================
+// CONFIGURACIÓN DE CÁLCULOS
+// =====================================================
+
+model CalculationInputs {
+  id             String   @id @default(cuid())
+  bondId         String   @unique @map("bond_id")
+  inputsData     Json     @map("inputs_data")
+  inflacionSerie Json     @map("inflacion_serie")
+  graciaSerie    Json     @map("gracia_serie")
+  createdAt      DateTime @default(now()) @map("created_at")
+  bond           Bond     @relation(fields: [bondId], references: [id], onDelete: Cascade)
+  results        CalculationResult[]
+  @@map("calculation_inputs")
+}
+
+model CalculationResult {
+  id                  String            @id @default(cuid())
+  bondId              String            @map("bond_id")
+  calculationInputsId String            @map("calculation_inputs_id")
+  calculosIntermedios Json              @map("calculos_intermedios")
+  metricasCalculadas  Json              @map("metricas_calculadas")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  bond                Bond              @relation(fields: [bondId], references: [id], onDelete: Cascade)
+  inputs              CalculationInputs @relation(fields: [calculationInputsId], references: [id], onDelete: Cascade)
+  @@map("calculation_results")
+}
+
+// =====================================================
+// AUDITORÍA Y LOGS
+// =====================================================
+
+model AuditLog {
+  id        String      @id @default(cuid())
+  userId    String?     @map("user_id")
+  tableName String      @map("table_name")
+  recordId  String      @map("record_id")
+  action    AuditAction
+  oldValues Json?       @map("old_values")
+  newValues Json?       @map("new_values")
+  createdAt DateTime    @default(now()) @map("created_at")
+  user      User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  @@map("audit_logs")
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  @@map("audit_action")
+}
