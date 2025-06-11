@@ -105,24 +105,5 @@
   },
   "prisma": {
     "schema": "lib/database/schema.prisma"
-  },
-  "jest": {
-    "preset": "ts-jest",
-    "testEnvironment": "node",
-    "roots": [
-      "<rootDir>/lib",
-      "<rootDir>/tests"
-    ],
-    "testMatch": [
-      "**/tests/**/*.test.ts",
-      "**/__tests__/**/*.test.ts"
-    ],
-    "moduleNameMapper": {
-      "^@/(.*)$": "<rootDir>/$1"
-    },
-    "setupFilesAfterEnv": [
-      "<rootDir>/tests/setup.ts"
-    ],
-    "testTimeout": 30000
   }
 }
