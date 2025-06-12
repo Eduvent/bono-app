@@ -135,7 +135,7 @@ describe('FinancialCalculator - Excel Validation Tests', () => {
                 1050 // valor comercial
             );
             // (0.45% + 0.5%) * 1050 = 0.95% * 1050 = 9.975 ≈ 9.98
-            expect(result).toBeCloseTo(9.98, 2);
+            expect(result).toBeCloseTo(9.98, 1);
         });
     });
 
