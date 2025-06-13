@@ -24,7 +24,9 @@
     "types": [
     "jest",
     "node"
-      ]
+      ],
+    "sourceMap": true,
+    "inlineSourceMap": true
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts","tests/**/*.ts"],
   "exclude": ["node_modules"]

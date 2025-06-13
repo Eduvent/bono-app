@@ -210,18 +210,19 @@ export class FinancialCalculator {
         };
     }
 
-    /**
-     * Cálculo de un período específico (n >= 1)
-     */
     private calcularPeriodo(
         periodo: number,
         inputs: CalculationInputs,
         intermedios: CalculosIntermedios,
         flujosAnteriores: CashFlowPeriod[]
     ): CashFlowPeriod {
-        // Obtener datos del período
-        const inflacionAnual = inputs.inflacionSerie[periodo - 1] || 0;
-        const gracia = inputs.graciaSerie[periodo - 1] || 'S';
+        // CORRECCIÓN: Mapeo correcto de series anuales a períodos de pago
+        // Para frecuencia semestral: períodos 1-2 = año 1, períodos 3-4 = año 2, etc.
+        const anoCorrespondiente = Math.floor((periodo - 1) / intermedios.periodosPorAno);
+
+        // Obtener datos del período usando el año correspondiente
+        const inflacionAnual = inputs.inflacionSerie[anoCorrespondiente] || 0;
+        const gracia = inputs.graciaSerie[anoCorrespondiente] || 'S';
 
         // B[n]: Fecha del período
         const fecha = ExcelFormulas.fechaPeriodo(
@@ -254,10 +255,10 @@ export class FinancialCalculator {
         // G[n]: Bono indexado
         const bonoIndexado = ExcelFormulas.bonoIndexado(bonoCapital, inflacionSemestral);
 
-        // H[n]: Cupón
+        // H[n]: Cupón (siempre se calcula)
         const cupon = ExcelFormulas.cupon(bonoIndexado, intermedios.tasaCuponPeriodica);
 
-        // J[n]: Amortización
+        // J[n]: Amortización (depende del tipo de gracia)
         const amortizacion = ExcelFormulas.amortizacion(
             periodo,
             intermedios.totalPeriodos,
@@ -265,7 +266,7 @@ export class FinancialCalculator {
             bonoIndexado
         );
 
-        // I[n]: Cuota
+        // I[n]: Cuota (la clave está aquí - debe ser 0 para gracia total)
         const cuota = ExcelFormulas.cuota(
             periodo,
             intermedios.totalPeriodos,
@@ -340,6 +341,7 @@ export class FinancialCalculator {
             factorConvexidad
         };
     }
+
 
     /**
      * STEP 3: Cálculo de métricas financieras finales

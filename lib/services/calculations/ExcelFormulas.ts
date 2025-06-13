@@ -225,25 +225,26 @@ export class ExcelFormulas {
         amortizacionAnterior: number | null,
         graciaAnterior: GracePeriodType | null
     ): number {
+        // Primer período: inicia con el valor nominal
         if (periodo === 1) {
             return valorNominal;
         }
 
-        if (periodo <= totalPeriodos && bonoIndexadoAnterior !== null) {
-            if (graciaAnterior === 'T') {
-                // Gracia total: capital se mantiene menos el cupón
-                return new Decimal(bonoIndexadoAnterior)
-                    .minus(cuponAnterior || 0)
-                    .toNumber();
-            } else {
-                // Sin gracia o gracia parcial: se reduce por amortización
-                return new Decimal(bonoIndexadoAnterior)
-                    .plus(amortizacionAnterior || 0)
-                    .toNumber();
-            }
+        // Si excede el total de períodos
+        if (periodo > totalPeriodos || bonoIndexadoAnterior === null) {
+            return 0;
         }
 
-        return 0;
+        // CORRECCIÓN: Con gracia total, el capital se mantiene
+        // (no se reduce porque no hay pagos)
+        if (graciaAnterior === 'T') {
+            return bonoIndexadoAnterior;
+        } else {
+            // Con gracia parcial o sin gracia: se reduce por amortización
+            return new Decimal(bonoIndexadoAnterior)
+                .plus(amortizacionAnterior || 0)
+                .toNumber();
+        }
     }
 
     /**
@@ -276,22 +277,24 @@ export class ExcelFormulas {
     /**
      * J[n]: Amortización
      * =SI(A[n]≤L7;SI(E[n]="T";0;SI(E[n]="P";0;SI(A[n]<>L7;0;-G[n])));0)
-     */
-    static amortizacion(
+     */static amortizacion(
         periodo: number,
         totalPeriodos: number,
         gracia: GracePeriodType | null,
         bonoIndexado: number
     ): number {
+        // Si el período excede el total, no hay amortización
         if (periodo > totalPeriodos) return 0;
 
+        // Gracia total o parcial: no amortiza nunca
         if (gracia === 'T' || gracia === 'P') return 0;
 
-        // Solo amortiza en el último período para método americano
-        if (periodo === totalPeriodos) {
+        // Sin gracia: solo amortiza en el último período (método americano)
+        if (gracia === 'S' && periodo === totalPeriodos) {
             return new Decimal(bonoIndexado).negated().toNumber();
         }
 
+        // En cualquier otro caso, no amortiza
         return 0;
     }
 
@@ -306,12 +309,21 @@ export class ExcelFormulas {
         cupon: number,
         amortizacion: number
     ): number {
+        // Si el período excede el total, no hay cuota
         if (periodo > totalPeriodos) return 0;
 
+        // Gracia total: no paga nada
         if (gracia === 'T') return 0;
 
+        // Gracia parcial: solo paga cupón
         if (gracia === 'P') return cupon;
 
+        // Sin gracia: paga cupón + amortización
+        if (gracia === 'S') {
+            return new Decimal(cupon).plus(amortizacion).toNumber();
+        }
+
+        // Caso por defecto (no debería llegar aquí)
         return new Decimal(cupon).plus(amortizacion).toNumber();
     }
 
@@ -360,16 +372,19 @@ export class ExcelFormulas {
         cuota: number,
         prima: number
     ): number {
+        // Período 0: entrada de efectivo menos costes iniciales
         if (periodo === 0) {
             return new Decimal(valorComercial)
                 .minus(costesInicialesEmisor)
                 .toNumber();
         }
 
+        // Períodos 1 a L7: cuota + prima
         if (periodo <= totalPeriodos) {
             return new Decimal(cuota).plus(prima).toNumber();
         }
 
+        // Después del vencimiento: no hay flujos
         return 0;
     }
 

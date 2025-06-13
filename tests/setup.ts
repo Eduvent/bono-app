@@ -2,7 +2,34 @@
 
 import { PrismaClient } from '../lib/generated/client'
 import { Decimal } from 'decimal.js';
+import 'source-map-support/register'
+// 🔧 Configuración de Source Maps y Stack Trace
+Error.stackTraceLimit = 10;
 
+// Guardar la función original de preparación de stack trace
+const origPrepare = Error.prepareStackTrace;
+
+// Filtrar frames de librerías para mostrar solo nuestro código
+Error.prepareStackTrace = (err, frames) => {
+    if (!origPrepare) {
+        return err.stack;
+    }
+
+    const filtered = frames.filter(f => {
+        const file = f.getFileName() || '';
+        // Filtrar node_modules de Prisma y otras librerías
+        return !/node_modules[\/\\]\.prisma/.test(file) &&
+            !/node_modules[\/\\]jest/.test(file) &&
+            !/node_modules[\/\\]@jest/.test(file);
+    });
+
+    return origPrepare(err, filtered);
+};
+
+// Tu configuración existente de tests...
+console.log('🧪 Configuración de tests cargada');
+
+// Resto del contenido actual de tu setup.ts
 /**
  * Configuración global para tests
  * Se ejecuta antes de todos los tests
