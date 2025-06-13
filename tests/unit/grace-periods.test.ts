@@ -126,12 +126,14 @@ describe('Grace Periods Logic Tests', () => {
             });
 
             // Último período: cupón + amortización
+            // Último período: cupón + amortización
             const ultimoPeriodo = result.flujos[result.flujos.length - 1];
             expect(ultimoPeriodo.gracia).toBe('S');
             expect(ultimoPeriodo.amortizacion).toBeLessThan(0); // Amortiza
-            expect(ultimoPeriodo.cuota).toBe(
-                (ultimoPeriodo.cupon || 0) + (ultimoPeriodo.amortizacion || 0)
-            );
+
+            // CORRECCIÓN: Usar toBeCloseTo para decimales
+            const expectedCuota = (ultimoPeriodo.cupon || 0) + (ultimoPeriodo.amortizacion || 0);
+            expect(ultimoPeriodo.cuota).toBeCloseTo(expectedCuota, 6); // 6 decimales de precisión
         });
     });
 

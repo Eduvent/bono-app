@@ -16,15 +16,25 @@ import {
  * Cada función corresponde a una celda específica del Excel
  */
 export class ExcelFormulas {
+    private static readonly PRECISION = 10;
+    private static readonly FINANCIAL_PRECISION = 2;
 
     // Configuración de precisión para cálculos financieros
-    private static readonly PRECISION = 10;
-
     static {
         Decimal.set({
             precision: ExcelFormulas.PRECISION,
-            rounding: Decimal.ROUND_HALF_UP
+            rounding: Decimal.ROUND_HALF_UP,
+            toExpNeg: -7,
+            toExpPos: 21,
+            maxE: 9e15,
+            minE: -9e15,
         });
+    }
+
+    private static roundFinancial(value: number): number {
+        return new Decimal(value)
+            .toDecimalPlaces(ExcelFormulas.FINANCIAL_PRECISION, Decimal.ROUND_HALF_UP)
+            .toNumber();
     }
 
     /**
@@ -168,7 +178,9 @@ export class ExcelFormulas {
         valorComercial: number
     ): number {
         const totalPorcentajes = new Decimal(flotacion).plus(cavali);
-        return totalPorcentajes.mul(valorComercial).toNumber();
+        const resultado = totalPorcentajes.mul(valorComercial);
+
+        return resultado.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber();
     }
 
     /**
@@ -489,18 +501,20 @@ export class ExcelFormulas {
         faPlazosPonderados: number[],
         flujosActualizados: number[]
     ): number {
-        const sumaFAPonderados = faPlazosPonderados.reduce(
+        // CORRECCIÓN: Excluir período 0 (índice 0) de ambas sumas
+        const sumaFAPonderados = faPlazosPonderados.slice(1).reduce(
             (sum, val) => sum.plus(val),
             new Decimal(0)
         );
 
-        const sumaFlujosActualizados = flujosActualizados.reduce(
+        const sumaFlujosActualizados = flujosActualizados.slice(1).reduce(
             (sum, val) => sum.plus(val),
             new Decimal(0)
         );
 
         return sumaFAPonderados.div(sumaFlujosActualizados).toNumber();
     }
+
 
     /**
      * Convexidad
@@ -567,25 +581,42 @@ export class ExcelFormulas {
      * Cálculo de TIR usando método de Newton-Raphson
      */
     private static calcularTIR(flujos: number[], fechas: Date[]): number {
-        let tir = 0.1; // Estimación inicial del 10%
-        const maxIteraciones = 100;
-        const tolerancia = 1e-8;
+        // CORRECCIÓN: Validar signos y corregir si es necesario
+        const positivos = flujos.filter(f => f > 0).length;
+        const negativos = flujos.filter(f => f < 0).length;
+
+        if (positivos === 0 || negativos === 0) {
+            return 0; // Caso especial
+        }
+
+        // CORRECCIÓN: Para bonista, el primer flujo debe ser negativo (inversión)
+        // Si el primer flujo es positivo, invertir todos los signos
+        let flujosCorregidos = [...flujos];
+        if (flujos[0] > 0) {
+            flujosCorregidos = flujos.map(f => -f);
+        }
+
+        let tir = 0.05; // Estimación inicial 5%
+        const maxIteraciones = 200;
+        const tolerancia = 1e-10;
 
         for (let i = 0; i < maxIteraciones; i++) {
-            const { vpn, derivada } = this.vpnYDerivada(flujos, fechas, tir);
+            const { vpn, derivada } = this.vpnYDerivada(flujosCorregidos, fechas, tir);
 
             if (Math.abs(vpn) < tolerancia) break;
 
+            if (Math.abs(derivada) < 1e-15) break;
+
             const nuevaTir = tir - vpn / derivada;
+            const tirAcotada = Math.max(-0.99, Math.min(2.0, nuevaTir));
 
-            if (Math.abs(nuevaTir - tir) < tolerancia) break;
+            if (Math.abs(tirAcotada - tir) < tolerancia) break;
 
-            tir = nuevaTir;
+            tir = tirAcotada;
         }
 
         return tir;
     }
-
     /**
      * Calcula VPN y su derivada para el método de Newton-Raphson
      */
@@ -601,13 +632,22 @@ export class ExcelFormulas {
 
         for (let i = 0; i < flujos.length; i++) {
             const diasDiferencia = (fechas[i].getTime() - fechaBase.getTime()) / (1000 * 60 * 60 * 24);
-            const anios = diasDiferencia / 365;
+            // CORRECCIÓN: Usar períodos en lugar de años calendario
+            const periodos = i; // Para flujos semestrales: período 0, 1, 2, etc.
 
-            const factor = new Decimal(1).plus(tasa).pow(-anios);
-            const flujoDecimal = new Decimal(flujos[i]);
+            if (periodos === 0) {
+                // Período 0: no se descuenta
+                vpn = vpn.plus(new Decimal(flujos[i]));
+                // Derivada es 0 para período 0
+            } else {
+                const factor = new Decimal(1).plus(tasa).pow(-periodos);
+                const flujoDecimal = new Decimal(flujos[i]);
 
-            vpn = vpn.plus(flujoDecimal.mul(factor));
-            derivada = derivada.minus(flujoDecimal.mul(factor).mul(anios).div(new Decimal(1).plus(tasa)));
+                vpn = vpn.plus(flujoDecimal.mul(factor));
+                derivada = derivada.minus(
+                    flujoDecimal.mul(factor).mul(periodos).div(new Decimal(1).plus(tasa))
+                );
+            }
         }
 
         return { vpn: vpn.toNumber(), derivada: derivada.toNumber() };
