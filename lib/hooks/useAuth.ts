@@ -34,8 +34,43 @@ export function useAuth(options: UseAuthOptions = {}) {
             try {
                 // Por ahora, usar datos del localStorage como fallback
                 const userData = localStorage.getItem('user');
+
+                let parsedUser: User | null = null;
+
                 if (userData) {
-                    const parsedUser = JSON.parse(userData);
+                    parsedUser = JSON.parse(userData);
+                } else {
+                    // Reconstruir usuario a partir del rol guardado
+                    const storedRole = localStorage.getItem('userRole');
+                    if (storedRole) {
+                        const role = storedRole === 'emisor' ? 'EMISOR' : 'INVERSIONISTA';
+                        parsedUser = {
+                            id: 'local-user',
+                            email: '',
+                            role,
+                        };
+
+                        if (role === 'EMISOR') {
+                            const profileStr = localStorage.getItem('emisorProfile');
+                            if (profileStr) {
+                                parsedUser.emisorProfile = {
+                                    id: 'local-emisor',
+                                    ...JSON.parse(profileStr),
+                                };
+                            }
+                        } else {
+                            const profileStr = localStorage.getItem('inversionistaProfile');
+                            if (profileStr) {
+                                parsedUser.inversionistaProfile = {
+                                    id: 'local-investor',
+                                    ...JSON.parse(profileStr),
+                                };
+                            }
+                        }
+                    }
+                }
+
+                if (parsedUser) {
                     setUser(parsedUser);
 
                     // Verificar rol si es requerido
