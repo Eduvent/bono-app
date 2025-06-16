@@ -64,7 +64,7 @@ export function Step1Dynamic({ bondData, saveData }: Step1Props) {
 
         // Guardar datos automáticamente (consistente con Step2 y Step3)
         saveData(formData, 1);
-    }, [formData, saveData]);
+    }, [formData]);
 
     const handleChange = (field: string, value: string) => {
         setFormData(prev => ({ ...prev, [field]: value }));
