@@ -51,7 +51,12 @@ export default function LoginPage() {
 
       setToast({ show: true, message: 'Login successful! Redirecting...', type: 'success' })
       setTimeout(() => {
-        router.push(data.user.role === 'EMISOR' ? '/emisor/dashboard' : '/inversionista/dashboard')
+        router.push(
+            data.user.role === 'EMISOR'
+                ? '/emisor/dashboard'
+                : '/inversionista/dashboard'
+        )
+        setIsLoading(false)
       }, 1500)
     } catch (error) {
       setToast({ show: true, message: 'Login failed', type: 'error' })

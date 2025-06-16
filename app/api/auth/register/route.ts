@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '../../../../lib/generated/client';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
+import {signToken} from "@/lib/auth";
 
 const prisma = new PrismaClient();
 
@@ -29,7 +30,20 @@ export async function POST(request: NextRequest) {
             }
         });
 
-        return NextResponse.json({ success: true, user: { id: user.id, email: user.email, role: user.role } }, { status: 201 });
+        const token = signToken({ userId: user.id });
+        const response = NextResponse.json({ success: true, token, user: { id: user.id, email: user.email, role: user.role } }, { status: 201 });
+        const secureCookie = process.env.SECURE_COOKIES === 'true';
+        response.cookies.set({
+            name: 'token',
+            value: token,
+            httpOnly: true,
+            sameSite: 'lax',
+            path: '/',
+            maxAge: 60 * 60 * 24,
+            secure: secureCookie
+        });
+
+        return response;
     } catch (error: any) {
         if (error instanceof z.ZodError) {
             return NextResponse.json({ error: 'Invalid request' }, { status: 400 });

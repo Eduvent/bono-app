@@ -57,7 +57,8 @@ npm install
 
 # Configurar variables de entorno
 cp .env.example .env.local
-# Editar .env.local con tus configuraciones
+# Editar .env.local con tus configuraciones.
+# Si no usas HTTPS en desarrollo, agrega `SECURE_COOKIES=false`.
 ```
 
 ### **3. Configuración de Base de Datos**

@@ -122,6 +122,7 @@ export default function EmisorDashboard() {
   // Manejar logout
   const handleLogout = () => {
     logout();
+  };
 
   // Loading state
   if (authLoading || bondsLoading) {

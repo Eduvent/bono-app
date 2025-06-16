@@ -245,6 +245,7 @@ NEXTAUTH_SECRET="dev-secret-${Math.random().toString(36).slice(2)}" # Un poco m√
 
 JWT_SECRET="jwt-secret-${Math.random().toString(36).slice(2)}"
 JWT_EXPIRES_IN="24h"
+SECURE_COOKIE=false
 
 # ... (otras variables que quieras generar o tomar de .env.example) ...
 # Considera leer .env.example y solo a√±adir/sobrescribir las de BD
