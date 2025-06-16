@@ -1,369 +1,354 @@
-// app/emisor/create-bond/components/Step4Dynamic.tsx - VERSIÓN CORREGIDA
-
+// app/emisor/create-bond/components/Step4Dynamic.tsx - DISEÑO ORIGINAL CORREGIDO
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Loader2, Calculator, FileText, CheckCircle, AlertCircle, RefreshCw, Download } from 'lucide-react';
-import { useCalculations } from '@/lib/hooks/useCalculations';
-import { useCashFlows } from '@/lib/hooks/useCashFlows';
-import { formatCurrency } from "@/utils/format";
+import { useState } from 'react';
+import { ChevronDown, Calculator, CheckCircle } from 'lucide-react';
 
 interface BondData {
     step1?: {
-        nombreInterno?: string; // Para compatibilidad con versiones anteriores
-        name?: string;          // Nuevo nombre estándar
+        name?: string;
+        nombreInterno?: string;
         codigoIsin?: string;
-        valorNominal?: string | number;
-        valorComercial?: string | number;
-        numAnios?: string | number;
+        valorNominal?: string;
+        valorComercial?: string;
+        numAnios?: string;
         fechaEmision?: string;
         frecuenciaCupon?: string;
-        diasPorAno?: string | number;
     };
     step2?: {
         tipoTasa?: string;
-        tasaAnual?: string | number;
+        tasaAnual?: string;
         indexadoInflacion?: boolean;
-        inflacionAnual?: string | number;
-        primaVencimiento?: string | number;
-        impuestoRenta?: string | number;
-        numGracePeriods?: number;
+        inflacionAnual?: string;
+        primaVencimiento?: string;
+        impuestoRenta?: string;
     };
     step3?: {
-        estructuracionEmisor?: string | number;
-        colocacionEmisor?: string | number;
-        flotacionEmisor?: string | number;
-        cavaliEmisor?: string | number;
-        emisorTotalAbs?: string | number;
-        bonistaTotalAbs?: string | number;
-        totalCostsAbs?: string | number;
-        flotacionBonista?: string | number;
-        cavaliBonista?: string | number;
+        estructuracionEmisor?: string;
+        colocacionEmisor?: string;
+        flotacionEmisor?: string;
+        cavaliEmisor?: string;
+        emisorTotalAbs?: string;
+        bonistaTotalAbs?: string;
+        totalCostsAbs?: string;
     };
 }
 
 interface Step4Props {
     bondData: BondData;
-    bondId?: string;
+    flowsCalculated: boolean;
+    setFlowsCalculated: (value: boolean) => void;
+    confirmationChecked: boolean;
+    setConfirmationChecked: (value: boolean) => void;
+    activeTab: string;
+    setActiveTab: (tab: string) => void;
 }
 
-/**
- * Componente para mostrar la tabla de flujos calculados
- */
-function TablaFlujosCalculados({ flujos, isLoading, bondName }: { flujos: any[], isLoading: boolean, bondName?: string }) {
-    if (isLoading) {
-        return (
-            <div className="flex items-center justify-center py-8">
-                <Loader2 className="animate-spin mr-2" size={20} />
-                Cargando flujos...
-            </div>
-        );
-    }
+export function Step4Dynamic({
+                                 bondData,
+                                 flowsCalculated,
+                                 setFlowsCalculated,
+                                 confirmationChecked,
+                                 setConfirmationChecked,
+                                 activeTab,
+                                 setActiveTab,
+                             }: Step4Props) {
+    const [isCalculating, setIsCalculating] = useState(false);
+    const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+        datos: true,
+        condiciones: false,
+        costes: false,
+    });
 
-    if (!flujos || flujos.length === 0) {
-        return <div className="text-center py-8 text-gray-400">No hay flujos calculados.</div>;
-    }
-
-    const formatCurrency = (amount: number | null) =>
-        amount === null ? "-" : new Intl.NumberFormat("es-PE", { style: "currency", currency: "PEN" }).format(amount);
-
-    const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString('es-ES');
-
-    return (
-        <div>
-            <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium">Flujos de Caja - {bondName || 'Bono'}</h3>
-                <span className="text-sm text-gray-400">{flujos.length} períodos</span>
-            </div>
-            <div className="overflow-x-auto bg-[#151515] border border-[#2A2A2A] rounded-xl">
-                <table className="min-w-[1200px] w-full text-sm">
-                    <thead className="bg-[#1A1A1A] text-[#CCCCCC]">
-                    <tr>
-                        <th className="sticky left-0 bg-[#1A1A1A] z-10 py-3 px-4 text-left">Nº</th>
-                        <th className="py-3 px-4 text-left">Fecha</th>
-                        <th className="py-3 px-4 text-right">Infl. Anual</th>
-                        <th className="py-3 px-4 text-right">Bono Indexado</th>
-                        <th className="py-3 px-4 text-right">Cupón</th>
-                        <th className="py-3 px-4 text-right">Amort.</th>
-                        <th className="py-3 px-4 text-right">Escudo Fiscal</th>
-                        <th className="py-3 px-4 text-right">Flujo Emisor</th>
-                        <th className="py-3 px-4 text-right">Flujo c/Escudo</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {flujos.map((flujo, index) => (
-                        <tr key={flujo.periodo} className={`border-b border-[#2A2A2A] hover:bg-[#1A1A1A] ${index % 2 === 0 ? 'bg-[#0F0F0F]' : ''}`}>
-                            <td className="sticky left-0 bg-inherit z-10 py-2 px-4 font-medium">{flujo.periodo}</td>
-                            <td className="py-2 px-4">{formatDate(flujo.fecha)}</td>
-                            <td className="py-2 px-4 text-right">{flujo.inflacionAnual ? `${(flujo.inflacionAnual * 100).toFixed(2)}%` : '-'}</td>
-                            <td className="py-2 px-4 text-right">{formatCurrency(flujo.bonoIndexado)}</td>
-                            <td className="py-2 px-4 text-right text-red-400">{formatCurrency(flujo.cupon)}</td>
-                            <td className="py-2 px-4 text-right text-red-400">{formatCurrency(flujo.amortizacion)}</td>
-                            <td className="py-2 px-4 text-right text-green-400">{formatCurrency(flujo.escudoFiscal)}</td>
-                            <td className={`py-2 px-4 text-right font-medium ${(flujo.flujoEmisor || 0) > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                {formatCurrency(flujo.flujoEmisor)}
-                            </td>
-                            <td className={`py-2 px-4 text-right font-medium ${(flujo.flujoEmisorConEscudo || 0) > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                {formatCurrency(flujo.flujoEmisorConEscudo)}
-                            </td>
-                        </tr>
-                    ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-}
-
-/**
- * Componente para mostrar métricas financieras calculadas
- */
-function MetricasFinancieras({ metricas }: { metricas: any }) {
-    if (!metricas) return null;
-
-    const formatPercent = (value: number) => `${(value * 100).toFixed(3)}%`;
-    const formatCurrency = (value: number) => new Intl.NumberFormat("es-PE", { style: "currency", currency: "PEN" }).format(value);
-
-    return (
-        <div className="space-y-6">
-            <div>
-                <h3 className="text-lg font-medium mb-4 text-[#39FF14]">📊 Métricas del Emisor</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-[#1E1E1E] rounded-lg p-4">
-                        <p className="text-gray-400 text-sm mb-1">VAN Emisor</p>
-                        <p className="text-xl font-bold">{formatCurrency(metricas.emisor.van)}</p>
-                    </div>
-                    <div className="bg-[#1E1E1E] rounded-lg p-4">
-                        <p className="text-gray-400 text-sm mb-1">TCEA (bruta)</p>
-                        <p className="text-xl font-bold">{formatPercent(metricas.emisor.tceaEmisor)}</p>
-                    </div>
-                    <div className="bg-[#1E1E1E] rounded-lg p-4">
-                        <p className="text-gray-400 text-sm mb-1">TCEA c/Escudo</p>
-                        <p className="text-xl font-bold text-green-400">{formatPercent(metricas.emisor.tceaEmisorConEscudo)}</p>
-                    </div>
-                    <div className="bg-[#1E1E1E] rounded-lg p-4">
-                        <p className="text-gray-400 text-sm mb-1">Duración Mod.</p>
-                        <p className="text-xl font-bold">{metricas.emisor.duracionModificada.toFixed(2)}</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-/**
- * Componente Principal del Step 4
- */
-export function Step4Dynamic({ bondData, bondId }: Step4Props) {
-    const [activeTab, setActiveTab] = useState("resumen");
-    const [confirmationChecked, setConfirmationChecked] = useState(false);
-
-    // Hooks de API/Cálculos
-    const {
-        calculate,
-        isCalculating,
-        calculationError,
-        lastResult,
-        needsRecalculation,
-        hasFlows,
-        status
-    } = useCalculations(bondId, { autoCalculate: false });
-
-    const {
-        flows: emisorFlows,
-        isLoading: isLoadingFlows,
-        error: flowsError,
-        downloadCSV
-    } = useCashFlows(bondId, { role: 'emisor', autoCalculate: false });
-
-    // Estado para saber si el usuario ha hecho clic en calcular y debemos mostrar resultados
-    const [shouldShowResults, setShouldShowResults] = useState(false);
-
-    const handleCalculate = async () => {
-        if (!bondId) return;
-        setShouldShowResults(false);
-        try {
-            await calculate({ recalculate: true, saveResults: true });
-            setShouldShowResults(true);
-        } catch (error) {
-            console.error("Calculation failed:", error);
-        }
+    const handleCalculateFlows = () => {
+        setIsCalculating(true);
+        setTimeout(() => {
+            setFlowsCalculated(true);
+            setIsCalculating(false);
+        }, 1500);
     };
 
-    // Sincronizar con el estado del hook
-    useEffect(() => {
-        if (hasFlows && lastResult?.success) {
-            setShouldShowResults(true);
-        }
-    }, [hasFlows, lastResult]);
+    const toggleSection = (section: string) => {
+        setExpandedSections({ ...expandedSections, [section]: !expandedSections[section] });
+    };
 
-    // Función para renderizar los detalles en el acordeón
-    const renderDetail = (label: string, value: any) => (
-        <div>
-            <p className="text-sm text-gray-400">{label}</p>
-            <p className="font-medium">{value || 'N/A'}</p>
-        </div>
-    );
+    const formatCurrency = (amount: string | number) => {
+        const num = typeof amount === "string" ? parseFloat(amount) : amount;
+        return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(num || 0);
+    };
 
-    // Helper para obtener el nombre del bono (compatibilidad con ambos nombres)
     const getBondName = () => {
-        return bondData.step1?.nombreInterno || bondData.step1?.name || 'Bono';
-    };
-
-    // Helper para formatear currency con null check
-    const safeFormatCurrency = (value: string | number | undefined) => {
-        if (!value) return 'N/A';
-        const numValue = typeof value === 'string' ? parseFloat(value) : value;
-        return isNaN(numValue) ? 'N/A' : formatCurrency(numValue);
+        return bondData.step1?.nombreInterno || bondData.step1?.name || "N/A";
     };
 
     return (
         <div>
             <h2 className="text-xl font-semibold mb-6">Revisión y Publicación</h2>
 
-            {/* Acordeón para Revisar Datos */}
-            <Accordion type="multiple" defaultValue={['item-1']} className="w-full mb-8">
-                <AccordionItem value="item-1">
-                    <AccordionTrigger className="text-lg font-medium">Datos Generales</AccordionTrigger>
-                    <AccordionContent className="p-4 bg-[#1A1A1A] rounded-b-lg">
-                        <div className="grid grid-cols-2 gap-4">
-                            {renderDetail("Nombre del Bono", getBondName())}
-                            {renderDetail("Código ISIN", bondData.step1?.codigoIsin)}
-                            {renderDetail("Valor Nominal", safeFormatCurrency(bondData.step1?.valorNominal))}
-                            {renderDetail("Valor Comercial", safeFormatCurrency(bondData.step1?.valorComercial))}
-                            {renderDetail("Nº de Años", bondData.step1?.numAnios)}
-                            {renderDetail("Frecuencia de Cupón", bondData.step1?.frecuenciaCupon)}
-                            {renderDetail("Fecha de Emisión", bondData.step1?.fechaEmision)}
+            {/* Review Accordion */}
+            <div className="mb-8">
+                {/* Datos Generales */}
+                <div className="border border-[#2A2A2A] rounded-lg mb-4 overflow-hidden">
+                    <div className="flex items-center justify-between p-4 cursor-pointer" onClick={() => toggleSection("datos")}>
+                        <h3 className="text-lg font-medium">Datos Generales</h3>
+                        <ChevronDown
+                            className={`text-gray-400 transition-transform ${expandedSections.datos ? "rotate-180" : ""}`}
+                            size={16}
+                        />
+                    </div>
+                    {expandedSections.datos && (
+                        <div className="border-t border-[#2A2A2A] p-4 bg-[#1A1A1A]">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <p className="text-gray-400 text-sm mb-1">Nombre del Bono</p>
+                                    <p className="font-medium">{getBondName()}</p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-400 text-sm mb-1">Código ISIN</p>
+                                    <p className="font-medium">{bondData.step1?.codigoIsin || "N/A"}</p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-400 text-sm mb-1">Valor Nominal</p>
+                                    <p className="font-medium">{formatCurrency(bondData.step1?.valorNominal || "0")}</p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-400 text-sm mb-1">Valor Comercial</p>
+                                    <p className="font-medium">{formatCurrency(bondData.step1?.valorComercial || "0")}</p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-400 text-sm mb-1">Plazo</p>
+                                    <p className="font-medium">{bondData.step1?.numAnios || "0"} años</p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-400 text-sm mb-1">Fecha de Emisión</p>
+                                    <p className="font-medium">{bondData.step1?.fechaEmision || "N/A"}</p>
+                                </div>
+                            </div>
                         </div>
-                    </AccordionContent>
-                </AccordionItem>
-
-                <AccordionItem value="item-2">
-                    <AccordionTrigger className="text-lg font-medium">Condiciones Financieras</AccordionTrigger>
-                    <AccordionContent className="p-4 bg-[#1A1A1A] rounded-b-lg">
-                        <div className="grid grid-cols-2 gap-4">
-                            {renderDetail("Tipo de Tasa", bondData.step2?.tipoTasa)}
-                            {renderDetail("Tasa Anual", `${bondData.step2?.tasaAnual || 0}%`)}
-                            {renderDetail("Indexado a Inflación", bondData.step2?.indexadoInflacion ? 'Sí' : 'No')}
-                            {bondData.step2?.indexadoInflacion && renderDetail("Inflación Anual Esperada", `${bondData.step2?.inflacionAnual || 0}%`)}
-                            {renderDetail("Prima de Vencimiento", `${bondData.step2?.primaVencimiento || 0}%`)}
-                            {renderDetail("Impuesto a la Renta", `${bondData.step2?.impuestoRenta || 30}%`)}
-                            {renderDetail("Períodos de Gracia", bondData.step2?.numGracePeriods || 0)}
-                        </div>
-                    </AccordionContent>
-                </AccordionItem>
-
-                <AccordionItem value="item-3">
-                    <AccordionTrigger className="text-lg font-medium">Costes y Comisiones</AccordionTrigger>
-                    <AccordionContent className="p-4 bg-[#1A1A1A] rounded-b-lg">
-                        <div className="grid grid-cols-2 gap-4">
-                            {renderDetail("Estructuración Emisor", `${bondData.step3?.estructuracionEmisor || 0}%`)}
-                            {renderDetail("Colocación Emisor", `${bondData.step3?.colocacionEmisor || 0}%`)}
-                            {renderDetail("Flotación Emisor", `${bondData.step3?.flotacionEmisor || 0}%`)}
-                            {renderDetail("CAVALI Emisor", `${bondData.step3?.cavaliEmisor || 0}%`)}
-                            {renderDetail("Total Costes Emisor", safeFormatCurrency(bondData.step3?.emisorTotalAbs))}
-                            {renderDetail("Total Costes Bonista", safeFormatCurrency(bondData.step3?.bonistaTotalAbs))}
-                        </div>
-                    </AccordionContent>
-                </AccordionItem>
-            </Accordion>
-
-            {/* Sección de Cálculo de Flujos */}
-            <div className="mb-8 p-6 bg-[#1A1A1A] rounded-lg border border-[#2A2A2A]">
-                <h3 className="text-lg font-medium mb-4">Cálculo de Flujos de Caja</h3>
-                <div className="flex items-center gap-4">
-                    <button
-                        onClick={handleCalculate}
-                        disabled={!bondId || isCalculating}
-                        className={`flex items-center px-4 py-2 rounded-lg transition ${
-                            !bondId || isCalculating
-                                ? "bg-gray-600 cursor-not-allowed"
-                                : "bg-[#39FF14] text-black hover:shadow-[0_0_8px_rgba(57,255,20,0.47)]"
-                        }`}
-                    >
-                        {isCalculating ? (
-                            <Loader2 className="animate-spin mr-2" />
-                        ) : (
-                            <Calculator className="mr-2" />
-                        )}
-                        {hasFlows ? "Recalcular Flujos" : "Calcular Flujos"}
-                    </button>
-
-                    {hasFlows && (
-                        <button
-                            onClick={() => downloadCSV()}
-                            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                        >
-                            <Download className="mr-2" />
-                            Descargar CSV
-                        </button>
                     )}
                 </div>
 
-                {needsRecalculation && (
-                    <p className="text-yellow-400 text-xs mt-2">
-                        Hay cambios pendientes. Se recomienda recalcular.
-                    </p>
-                )}
+                {/* Condiciones */}
+                <div className="border border-[#2A2A2A] rounded-lg mb-4 overflow-hidden">
+                    <div
+                        className="flex items-center justify-between p-4 cursor-pointer"
+                        onClick={() => toggleSection("condiciones")}
+                    >
+                        <h3 className="text-lg font-medium">Condiciones</h3>
+                        <ChevronDown
+                            className={`text-gray-400 transition-transform ${expandedSections.condiciones ? "rotate-180" : ""}`}
+                            size={16}
+                        />
+                    </div>
+                    {expandedSections.condiciones && (
+                        <div className="border-t border-[#2A2A2A] p-4 bg-[#1A1A1A]">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <p className="text-gray-400 text-sm mb-1">Tipo de Tasa</p>
+                                    <p className="font-medium capitalize">{bondData.step2?.tipoTasa || "N/A"}</p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-400 text-sm mb-1">Tasa de Interés</p>
+                                    <p className="font-medium">{bondData.step2?.tasaAnual || "0"}% anual</p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-400 text-sm mb-1">Frecuencia de Pago</p>
+                                    <p className="font-medium capitalize">{bondData.step1?.frecuenciaCupon || "N/A"}</p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-400 text-sm mb-1">Prima al Vencimiento</p>
+                                    <p className="font-medium">{bondData.step2?.primaVencimiento || "0"}%</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
 
-                {(calculationError || flowsError) && (
-                    <p className="text-red-400 text-xs mt-2">
-                        {calculationError || flowsError}
-                    </p>
+                {/* Costes */}
+                <div className="border border-[#2A2A2A] rounded-lg mb-4 overflow-hidden">
+                    <div className="flex items-center justify-between p-4 cursor-pointer" onClick={() => toggleSection("costes")}>
+                        <h3 className="text-lg font-medium">Costes</h3>
+                        <ChevronDown
+                            className={`text-gray-400 transition-transform ${expandedSections.costes ? "rotate-180" : ""}`}
+                            size={16}
+                        />
+                    </div>
+                    {expandedSections.costes && (
+                        <div className="border-t border-[#2A2A2A] p-4 bg-[#1A1A1A]">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <p className="text-gray-400 text-sm mb-1">Total Costes Emisor</p>
+                                    <p className="font-medium text-[#39FF14]">{formatCurrency(bondData.step3?.emisorTotalAbs || "0")}</p>
+                                </div>
+                                <div>
+                                    <p className="text-gray-400 text-sm mb-1">Total Costes Bonista</p>
+                                    <p className="font-medium text-[#39FF14]">{formatCurrency(bondData.step3?.bonistaTotalAbs || "0")}</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Calculate Flows Section */}
+            <div className="mb-8">
+                <button
+                    onClick={handleCalculateFlows}
+                    disabled={isCalculating || flowsCalculated}
+                    className={`w-full py-3 border rounded-lg transition flex items-center justify-center mb-6 ${
+                        flowsCalculated
+                            ? "bg-[#1A3A1A] border-[#39FF14] text-[#39FF14]"
+                            : "bg-[#1E1E1E] border-[#2A2A2A] hover:bg-[#252525]"
+                    }`}
+                >
+                    {isCalculating ? (
+                        <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                            Calculando...
+                        </>
+                    ) : flowsCalculated ? (
+                        <>
+                            <CheckCircle className="mr-2" size={16} />
+                            Flujos Calculados
+                        </>
+                    ) : (
+                        <>
+                            <Calculator className="mr-2" size={16} />
+                            Calcular Flujos
+                        </>
+                    )}
+                </button>
+
+                {flowsCalculated && (
+                    <div>
+                        {/* Tabs */}
+                        <div className="mb-6 border-b border-[#2A2A2A] flex">
+                            {[
+                                { id: "summary", label: "Resumen" },
+                                { id: "flows", label: "Flujos" },
+                                { id: "analytics", label: "Analytics" },
+                            ].map((tab) => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={`py-3 px-6 text-sm font-medium border-b-2 transition ${
+                                        activeTab === tab.id
+                                            ? "text-[#39FF14] border-[#39FF14]"
+                                            : "text-gray-400 border-transparent hover:text-white hover:border-[#39FF14]"
+                                    }`}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Tab Content */}
+                        {activeTab === "summary" && (
+                            <div>
+                                <p className="text-lg font-semibold mb-4">Resumen de Indicadores Clave (Emisor)</p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    <div className="bg-[#1E1E1E] rounded-lg px-6 py-4">
+                                        <p className="text-gray-400 text-xs mb-1">Precio Neto Recibido Emisor</p>
+                                        <p className="text-[#39FF14] font-medium text-lg">1,026.90</p>
+                                    </div>
+                                    <div className="bg-[#1E1E1E] rounded-lg px-6 py-4">
+                                        <p className="text-gray-400 text-xs mb-1">Costes Iniciales Totales (Emisor)</p>
+                                        <p className="text-[#39FF14] font-medium text-lg">23.10</p>
+                                    </div>
+                                    <div className="bg-[#1E1E1E] rounded-lg px-6 py-4">
+                                        <p className="text-gray-400 text-xs mb-1">Duración</p>
+                                        <p className="text-[#39FF14] font-medium text-lg">4.45 años</p>
+                                    </div>
+                                    <div className="bg-[#1E1E1E] rounded-lg px-6 py-4">
+                                        <p className="text-gray-400 text-xs mb-1">TCEA Emisor (bruta)</p>
+                                        <p className="text-[#39FF14] font-medium text-lg">18.176%</p>
+                                    </div>
+                                    <div className="bg-[#1E1E1E] rounded-lg px-6 py-4">
+                                        <p className="text-gray-400 text-xs mb-1">TCEA Emisor (c/Escudo)</p>
+                                        <p className="text-[#39FF14] font-medium text-lg">15.556%</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === "flows" && (
+                            <div>
+                                <p className="text-lg font-semibold mb-4">Flujo de Caja Proyectado (Emisor)</p>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full border-collapse min-w-[800px]">
+                                        <thead>
+                                        <tr className="bg-[#1A1A1A] text-gray-400 text-xs">
+                                            <th className="py-2 px-3 text-center font-medium">Nº</th>
+                                            <th className="py-2 px-3 text-left font-medium">Fecha</th>
+                                            <th className="py-2 px-3 text-right font-medium">Cupón (Int.)</th>
+                                            <th className="py-2 px-3 text-right font-medium">Amort.</th>
+                                            <th className="py-2 px-3 text-right font-medium">Flujo Emisor</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody className="text-sm">
+                                        <tr className="border-b border-[#2A2A2A] hover:bg-[#1E1E1E]">
+                                            <td className="py-2 px-3 text-center">0</td>
+                                            <td className="py-2 px-3 text-left">01/06/2025</td>
+                                            <td className="py-2 px-3 text-right">-</td>
+                                            <td className="py-2 px-3 text-right">-</td>
+                                            <td className="py-2 px-3 text-right text-green-500">+1,026.90</td>
+                                        </tr>
+                                        <tr className="border-b border-[#2A2A2A] hover:bg-[#1E1E1E]">
+                                            <td className="py-2 px-3 text-center">1</td>
+                                            <td className="py-2 px-3 text-left">28/11/2025</td>
+                                            <td className="py-2 px-3 text-right text-red-500">(41.15)</td>
+                                            <td className="py-2 px-3 text-right">0.00</td>
+                                            <td className="py-2 px-3 text-right text-red-500">(41.15)</td>
+                                        </tr>
+                                        <tr className="border-b border-[#2A2A2A] hover:bg-[#1E1E1E]">
+                                            <td className="py-2 px-3 text-center">2</td>
+                                            <td className="py-2 px-3 text-left">27/05/2026</td>
+                                            <td className="py-2 px-3 text-right text-red-500">(43.15)</td>
+                                            <td className="py-2 px-3 text-right">0.00</td>
+                                            <td className="py-2 px-3 text-right text-red-500">(43.15)</td>
+                                        </tr>
+                                        <tr className="hover:bg-[#1E1E1E]">
+                                            <td className="py-2 px-3 text-center">10</td>
+                                            <td className="py-2 px-3 text-left">06/05/2030</td>
+                                            <td className="py-2 px-3 text-right text-red-500">(63.18)</td>
+                                            <td className="py-2 px-3 text-right text-red-500">(1,610.51)</td>
+                                            <td className="py-2 px-3 text-right text-red-500">(1,683.69)</td>
+                                        </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === "analytics" && (
+                            <div>
+                                <p className="text-lg font-semibold mb-4">Análisis de Rentabilidad y Riesgo (Emisor)</p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="bg-[#1E1E1E] rounded-lg p-4">
+                                        <p className="text-gray-400 text-sm mb-1">VAN Emisor (c/Escudo)</p>
+                                        <p className="text-[#39FF14] font-medium text-xl">693.37</p>
+                                    </div>
+                                    <div className="bg-[#1E1E1E] rounded-lg p-4">
+                                        <p className="text-gray-400 text-sm mb-1">TIR Emisor (bruta)</p>
+                                        <p className="text-[#39FF14] font-medium text-xl">18.450%</p>
+                                    </div>
+                                    <div className="bg-[#1E1E1E] rounded-lg p-4">
+                                        <p className="text-gray-400 text-sm mb-1">Duración Modificada</p>
+                                        <p className="text-[#39FF14] font-medium text-xl">4.35</p>
+                                    </div>
+                                    <div className="bg-[#1E1E1E] rounded-lg p-4">
+                                        <p className="text-gray-400 text-sm mb-1">Total Ratios Decisión</p>
+                                        <p className="text-[#39FF14] font-medium text-xl">26.84</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 )}
             </div>
 
-            {/* Resultados (Tabs) */}
-            {shouldShowResults && (
-                <div>
-                    <div className="flex border-b border-[#2A2A2A] mb-6">
-                        <button
-                            onClick={() => setActiveTab("flujos")}
-                            className={`px-4 py-2 transition ${
-                                activeTab === "flujos"
-                                    ? "border-b-2 border-[#39FF14] text-[#39FF14]"
-                                    : "text-gray-400"
-                            }`}
-                        >
-                            Tabla de Flujos
-                        </button>
-                        <button
-                            onClick={() => setActiveTab("metricas")}
-                            className={`px-4 py-2 transition ${
-                                activeTab === "metricas"
-                                    ? "border-b-2 border-[#39FF14] text-[#39FF14]"
-                                    : "text-gray-400"
-                            }`}
-                        >
-                            Métricas Financieras
-                        </button>
-                    </div>
-
-                    {activeTab === "flujos" && (
-                        <TablaFlujosCalculados
-                            flujos={emisorFlows}
-                            isLoading={isLoadingFlows}
-                            bondName={getBondName()}
-                        />
-                    )}
-
-                    {activeTab === "metricas" && (
-                        <MetricasFinancieras metricas={lastResult?.metricas} />
-                    )}
-                </div>
-            )}
-
-            {/* Loading state cuando se está calculando */}
-            {(isCalculating || isLoadingFlows) && !shouldShowResults && (
-                <div className="flex items-center justify-center py-12">
-                    <Loader2 className="animate-spin mr-2" />
-                    <span>Generando resultados...</span>
-                </div>
-            )}
-
-            {/* Confirmación Final */}
-            <div className="mt-8 p-4 bg-[#1A1A1A] rounded-lg border border-[#2A2A2A]">
+            {/* Confirmation Section */}
+            <div className="mb-8">
                 <div className="flex items-start">
                     <input
                         type="checkbox"
@@ -372,17 +357,11 @@ export function Step4Dynamic({ bondData, bondId }: Step4Props) {
                         onChange={(e) => setConfirmationChecked(e.target.checked)}
                         className="mt-1 mr-3 h-4 w-4 rounded border-gray-300 text-[#39FF14] focus:ring-[#39FF14] bg-gray-700"
                     />
-                    <label htmlFor="confirmation-checkbox" className="text-gray-300 text-sm">
-                        He revisado y acepto todos los datos proporcionados. Los cálculos han sido verificados y entiendo que una vez publicado, el bono no podrá ser modificado.
+                    <label htmlFor="confirmation-checkbox" className="text-gray-300">
+                        He revisado y acepto todos los datos proporcionados para la emisión del bono. Entiendo que una vez
+                        publicado, estos datos no podrán ser modificados.
                     </label>
                 </div>
-
-                {confirmationChecked && hasFlows && (
-                    <div className="mt-3 flex items-center text-green-400 text-sm">
-                        <CheckCircle className="mr-2" />
-                        Listo para publicar.
-                    </div>
-                )}
             </div>
         </div>
     );
