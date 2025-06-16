@@ -31,7 +31,7 @@ export default function EmisorDashboard() {
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   // Autenticación y datos del emisor
-  const { user, isLoading: authLoading } = useAuth({ requireRole: 'EMISOR' });
+  const { user, isLoading: authLoading, logout } = useAuth({ requireRole: 'EMISOR' });
 
   // Datos de bonos con auto-refresh
   const {
@@ -121,11 +121,7 @@ export default function EmisorDashboard() {
 
   // Manejar logout
   const handleLogout = () => {
-    localStorage.removeItem('userRole');
-    localStorage.removeItem('userId');
-    localStorage.removeItem('emisorProfile');
-    router.push('/auth/login');
-  };
+    logout();
 
   // Loading state
   if (authLoading || bondsLoading) {

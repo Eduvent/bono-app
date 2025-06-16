@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { useAuth } from '@/lib/hooks/useAuth'
 import {
   LineChartIcon as ChartLine,
   Plus,
@@ -40,6 +41,7 @@ interface AvailableBond {
 
 export default function InversionistaDashboard() {
   const router = useRouter()
+  const { user, isLoading: authLoading, logout } = useAuth({ requireRole: 'INVERSIONISTA' })
   const [inversionistaData, setInversionistaData] = useState<any>(null)
   const [activeTab, setActiveTab] = useState<"mis-bonos" | "bonos-disponibles">("mis-bonos")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -170,22 +172,13 @@ export default function InversionistaDashboard() {
   ]
 
   useEffect(() => {
-    const userRole = localStorage.getItem("userRole")
-    if (userRole !== "inversionista") {
-      router.push("/auth/login")
-      return
+    if (user?.inversionistaProfile) {
+      setInversionistaData(user.inversionistaProfile)
     }
-
-    const profile = localStorage.getItem("inversionistaProfile")
-    if (profile) {
-      setInversionistaData(JSON.parse(profile))
-    }
-  }, [router])
+  }, [user])
 
   const handleLogout = () => {
-    localStorage.removeItem("userRole")
-    localStorage.removeItem("inversionistaProfile")
-    router.push("/auth/login")
+    logout()
   }
 
   const formatCurrency = (amount: number) => {
@@ -219,7 +212,7 @@ export default function InversionistaDashboard() {
   const interesesRecibidos = 875430 // Sample YTD interest
   const proximoCupon = { amount: 123750, date: "15 Junio, 2023" }
 
-  if (!inversionistaData) {
+  if (authLoading || !inversionistaData) {
     return (
       <div className="min-h-screen bg-[#0D0D0D] flex items-center justify-center">
         <div className="text-center">

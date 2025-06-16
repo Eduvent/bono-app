@@ -1,12 +1,10 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Eye, EyeOff, Mail, LineChartIcon as ChartLine } from "lucide-react"
 import Header from "@/components/header"
 import Toast from "@/components/toast"
+import React, { useState } from "react"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -28,20 +26,37 @@ export default function LoginPage() {
     }
 
     setIsLoading(true)
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: formData.email, password: formData.password })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setToast({ show: true, message: data.error || 'Login failed', type: 'error' })
+        setIsLoading(false)
+        return
+      }
 
-    // Simulate login
-    setTimeout(() => {
-      setToast({ show: true, message: "Login successful! Redirecting...", type: "success" })
-      setTimeout(() => {
-        // Check if user has a role, if not go to role selection
-        const userRole = localStorage.getItem("userRole")
-        if (userRole) {
-          router.push(userRole === "emisor" ? "/emisor/dashboard" : "/inversionista/dashboard")
-        } else {
-          router.push("/auth/role-selection")
+      if (data.user) {
+        localStorage.setItem('userRole', data.user.role.toLowerCase())
+        if (data.user.emisorProfile) {
+          localStorage.setItem('emisorProfile', JSON.stringify(data.user.emisorProfile))
         }
+        if (data.user.inversionistaProfile) {
+          localStorage.setItem('inversionistaProfile', JSON.stringify(data.user.inversionistaProfile))
+        }
+      }
+
+      setToast({ show: true, message: 'Login successful! Redirecting...', type: 'success' })
+      setTimeout(() => {
+        router.push(data.user.role === 'EMISOR' ? '/emisor/dashboard' : '/inversionista/dashboard')
       }, 1500)
-    }, 1000)
+    } catch (error) {
+      setToast({ show: true, message: 'Login failed', type: 'error' })
+      setIsLoading(false)
+    }
   }
 
   return (

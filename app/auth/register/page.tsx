@@ -97,14 +97,27 @@ export default function RegisterPage() {
     }
 
     setIsLoading(true)
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: formData.email, password: formData.password })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setToast({ show: true, message: data.error || 'Registro fallido', type: 'error' })
+        setIsLoading(false)
+        return
+      }
 
-    // Simulate registration
-    setTimeout(() => {
-      setToast({ show: true, message: "¡Cuenta creada! Redirigiendo...", type: "success" })
+      setToast({ show: true, message: '¡Cuenta creada! Redirigiendo...', type: 'success' })
       setTimeout(() => {
-        router.push("/auth/role-selection")
+        router.push('/auth/role-selection')
       }, 1500)
-    }, 1000)
+    } catch (error) {
+      setToast({ show: true, message: 'Registro fallido', type: 'error' })
+      setIsLoading(false)
+    }
   }
 
   const passwordStrength = getPasswordStrength(formData.password)
