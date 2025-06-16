@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
                 } : undefined
             }
         });
-
+        const secureCookie = process.env.SECURE_COOKIES === 'true';
         response.cookies.set({
             name: 'token',
             value: token,
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
             sameSite: 'lax',
             path: '/',
             maxAge: 60 * 60 * 24,
-            secure: process.env.NODE_ENV === 'production'
+            secure: secureCookie
         });
 
         await prisma.user.update({
