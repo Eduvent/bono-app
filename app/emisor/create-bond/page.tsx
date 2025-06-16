@@ -1,4 +1,4 @@
-// app/emisor/create-bond/page.tsx - VERSIÓN MIGRADA
+// app/emisor/create-bond/page.tsx - VERSIÓN COMPLETAMENTE INTEGRADA
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -9,12 +9,17 @@ import {
   ArrowRight,
   Check,
   PlaneIcon as PaperPlane,
-  Plus,
 } from 'lucide-react';
 
-// Importar los nuevos componentes dinámicos
+// Importar TODOS los componentes dinámicos
+import { Step1Dynamic } from './components/Step1Dynamic';
 import { Step2Dynamic } from './components/Step2Dynamic';
 import { Step3Dynamic } from './components/Step3Dynamic';
+import { Step4Dynamic } from './components/Step4Dynamic';
+
+// Importar hooks
+import { useAuth } from '@/lib/hooks/useAuth';
+import { useCreateBond } from '@/lib/hooks/useCreateBond';
 
 // Interfaces actualizadas para incluir períodos de gracia
 interface GracePeriodConfig {
@@ -24,14 +29,14 @@ interface GracePeriodConfig {
 
 interface BondData {
   step1?: {
-    nombreInterno: string;
-    codigoISIN: string;
+    name: string;
+    codigoIsin: string;
     valorNominal: string;
     valorComercial: string;
     numAnios: string;
     fechaEmision: string;
     frecuenciaCupon: string;
-    baseDias: string;
+    diasPorAno: string;
   };
   step2?: {
     tipoTasa: string;
@@ -41,7 +46,6 @@ interface BondData {
     inflacionAnual: string;
     primaVencimiento: string;
     impuestoRenta: string;
-    // 🆕 Nuevos campos para períodos de gracia
     numGracePeriods: number;
     gracePeriodsConfig: GracePeriodConfig[];
   };
@@ -60,14 +64,16 @@ interface BondData {
 
 export default function CreateBondWizard() {
   const router = useRouter();
+  const { user, isLoading: authLoading } = useAuth({ requireRole: 'EMISOR' });
+
+  // Estados del wizard
   const [currentStep, setCurrentStep] = useState(1);
   const [bondData, setBondData] = useState<BondData>({});
   const [flowsCalculated, setFlowsCalculated] = useState(false);
   const [confirmationChecked, setConfirmationChecked] = useState(false);
   const [activeTab, setActiveTab] = useState('summary');
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 🆕 Estado para validación mejorada
+  // Estado para validación mejorada
   const [stepValidation, setStepValidation] = useState({
     step1: false,
     step2: false,
@@ -75,36 +81,61 @@ export default function CreateBondWizard() {
     step4: false,
   });
 
+  // Hook para crear bono
+  const { createBond, isCreating, error: createError } = useCreateBond({
+    onSuccess: (bondId) => {
+      localStorage.removeItem('bondWizardData');
+      router.push(`/emisor/bond/${bondId}?created=true`);
+    },
+    onError: (error) => {
+      console.error('❌ Error creando bono:', error);
+      alert(`Error al crear el bono: ${error}`);
+    },
+  });
+
+  // Cargar datos guardados
   useEffect(() => {
-    const userRole = localStorage.getItem('userRole');
-    if (userRole !== 'emisor') {
+    if (authLoading) return;
+
+    if (!user) {
       router.push('/auth/login');
       return;
     }
 
-    // Load saved data
     const savedData = localStorage.getItem('bondWizardData');
     if (savedData) {
-      setBondData(JSON.parse(savedData));
+      try {
+        const parsed = JSON.parse(savedData);
+        setBondData(parsed.bondData || {});
+        setCurrentStep(parsed.currentStep || 1);
+      } catch (error) {
+        console.warn('Error parsing saved wizard data:', error);
+      }
     }
-  }, [router]);
+  }, [user, authLoading, router]);
 
+  // Guardar datos automáticamente
   const saveData = (stepData: any, step: number) => {
     const newData = { ...bondData, [`step${step}`]: stepData };
     setBondData(newData);
-    localStorage.setItem('bondWizardData', JSON.stringify(newData));
 
-    // 🆕 Actualizar validación del paso
+    // Guardar en localStorage
+    localStorage.setItem('bondWizardData', JSON.stringify({
+      bondData: newData,
+      currentStep,
+    }));
+
+    // Validar el paso
     validateStep(step, stepData);
   };
 
-  // 🆕 Función de validación mejorada
+  // Función de validación mejorada
   const validateStep = (step: number, data: any) => {
     let isValid = false;
 
     switch (step) {
       case 1:
-        isValid = !!(data?.nombreInterno && data?.valorNominal && data?.valorComercial);
+        isValid = !!(data?.name && data?.valorNominal && data?.valorComercial && data?.numAnios);
         break;
       case 2:
         isValid = !!(data?.tasaAnual && data?.primaVencimiento && data?.impuestoRenta);
@@ -120,23 +151,14 @@ export default function CreateBondWizard() {
     setStepValidation(prev => ({ ...prev, [`step${step}`]: isValid }));
   };
 
+  // Utilidades
   const getProgressPercentage = () => (currentStep / 4) * 100;
 
   const canProceedToNext = () => {
-    switch (currentStep) {
-      case 1:
-        return stepValidation.step1;
-      case 2:
-        return stepValidation.step2;
-      case 3:
-        return stepValidation.step3;
-      case 4:
-        return stepValidation.step4;
-      default:
-        return false;
-    }
+    return stepValidation[`step${currentStep}` as keyof typeof stepValidation];
   };
 
+  // Navegación
   const handleNext = () => {
     if (canProceedToNext() && currentStep < 4) {
       setCurrentStep(currentStep + 1);
@@ -149,78 +171,67 @@ export default function CreateBondWizard() {
     }
   };
 
+  // Envío del bono
   const handleSubmit = async () => {
-    if (!canProceedToNext()) return;
-
-    setIsSubmitting(true);
+    if (!canProceedToNext() || !user?.emisorProfile?.id) return;
 
     try {
-      // 🆕 Preparar datos para API - incluir períodos de gracia
+      // Transformar datos del wizard al formato de la API
       const bondPayload = {
-        // Datos básicos del Step 1
-        nombreInterno: bondData.step1?.nombreInterno,
-        codigoISIN: bondData.step1?.codigoISIN,
+        // Step 1: Datos básicos (corregir nombres de campos)
+        name: bondData.step1?.name,
+        codigoIsin: bondData.step1?.codigoIsin,
         valorNominal: parseFloat(bondData.step1?.valorNominal || '0'),
         valorComercial: parseFloat(bondData.step1?.valorComercial || '0'),
         numAnios: parseInt(bondData.step1?.numAnios || '1'),
         fechaEmision: bondData.step1?.fechaEmision,
         frecuenciaCupon: bondData.step1?.frecuenciaCupon,
-        baseDias: parseInt(bondData.step1?.baseDias || '360'),
+        diasPorAno: parseInt(bondData.step1?.diasPorAno || '360'),
 
-        // Datos financieros del Step 2 (incluyendo períodos de gracia)
+        // Step 2: Condiciones financieras
         tipoTasa: bondData.step2?.tipoTasa,
         periodicidadCapitalizacion: bondData.step2?.periodicidadCapitalizacion,
-        tasaAnual: parseFloat(bondData.step2?.tasaAnual || '0'),
-        indexadoInflacion: bondData.step2?.indexadoInflacion || false,
-        inflacionAnual: parseFloat(bondData.step2?.inflacionAnual || '0'),
-        primaVencimiento: parseFloat(bondData.step2?.primaVencimiento || '0'),
-        impuestoRenta: parseFloat(bondData.step2?.impuestoRenta || '30'),
+        tasaAnual: parseFloat(bondData.step2?.tasaAnual || '0') / 100, // Convertir a decimal
+        tasaDescuento: parseFloat(bondData.step2?.tasaAnual || '0') / 100, // Por ahora igual
+        inflacionSerie: bondData.step2?.indexadoInflacion
+            ? Array(parseInt(bondData.step1?.numAnios || '1')).fill(parseFloat(bondData.step2?.inflacionAnual || '0') / 100)
+            : Array(parseInt(bondData.step1?.numAnios || '1')).fill(0),
+        primaPorcentaje: parseFloat(bondData.step2?.primaVencimiento || '0') / 100,
+        impuestoRenta: parseFloat(bondData.step2?.impuestoRenta || '30') / 100,
 
-        // 🆕 Nuevos campos de períodos de gracia
-        numGracePeriods: bondData.step2?.numGracePeriods || 0,
-        gracePeriodsConfig: bondData.step2?.gracePeriodsConfig || [],
+        // Step 2: Períodos de gracia transformados
+        graciaSerie: bondData.step2?.gracePeriodsConfig?.map(config => config.graceType) || [],
 
-        // Datos de costes del Step 3
-        costes: {
-          estructuracionPct: parseFloat(bondData.step3?.estructuracionEmisor || '0'),
-          colocacionPct: parseFloat(bondData.step3?.colocacionEmisor || '0'),
-          flotacionPct: parseFloat(bondData.step3?.flotacionEmisor || '0'),
-          cavaliPct: parseFloat(bondData.step3?.cavaliEmisor || '0'),
-        },
+        // Step 3: Costes (corregir nombres de campos)
+        estructuracionPorcentaje: parseFloat(bondData.step3?.estructuracionEmisor || '0') / 100,
+        colocacionPorcentaje: parseFloat(bondData.step3?.colocacionEmisor || '0') / 100,
+        flotacionPorcentaje: parseFloat(bondData.step3?.flotacionEmisor || '0') / 100,
+        cavaliPorcentaje: parseFloat(bondData.step3?.cavaliEmisor || '0') / 100,
 
-        // Información del emisor (desde localStorage o contexto)
-        emisorId: localStorage.getItem('userId') || 'default-emisor-id',
+        // Metadata
+        emisorId: user.emisorProfile.id,
       };
 
       console.log('🚀 Enviando datos del bono:', bondPayload);
 
-      // TODO: Implementar llamada a API real
-      // const response = await fetch('/api/bonds', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(bondPayload),
-      // });
-
-      // if (!response.ok) {
-      //   throw new Error('Error al crear el bono');
-      // }
-
-      // const result = await response.json();
-      // console.log('✅ Bono creado:', result);
-
-      // Simular API call por ahora
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      localStorage.removeItem('bondWizardData');
-      router.push('/emisor/dashboard');
+      await createBond(bondPayload);
 
     } catch (error) {
       console.error('❌ Error al crear el bono:', error);
-      alert('Error al crear el bono. Por favor, intente nuevamente.');
-    } finally {
-      setIsSubmitting(false);
     }
   };
+
+  // Loading state
+  if (authLoading) {
+    return (
+        <div className="min-h-screen bg-[#0D0D0D] flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#39FF14] mx-auto"></div>
+            <p className="text-white mt-4">Cargando...</p>
+          </div>
+        </div>
+    );
+  }
 
   return (
       <div className="min-h-screen bg-[#0D0D0D] text-white font-inter">
@@ -294,19 +305,19 @@ export default function CreateBondWizard() {
               </div>
             </div>
 
-            {/* Form Content */}
+            {/* Form Content - USAR TODOS LOS COMPONENTES DINÁMICOS */}
             <div className="px-6 pb-6">
-              {currentStep === 1 && <Step1 bondData={bondData} saveData={saveData} />}
+              {currentStep === 1 && (
+                  <Step1Dynamic bondData={bondData} saveData={saveData} />
+              )}
               {currentStep === 2 && (
-                  // 🆕 Usar el nuevo componente dinámico
                   <Step2Dynamic bondData={bondData} saveData={saveData} />
               )}
               {currentStep === 3 && (
-                  // 🆕 Usar el nuevo componente dinámico
                   <Step3Dynamic bondData={bondData} saveData={saveData} />
               )}
               {currentStep === 4 && (
-                  <Step4
+                  <Step4Dynamic
                       bondData={bondData}
                       flowsCalculated={flowsCalculated}
                       setFlowsCalculated={setFlowsCalculated}
@@ -345,14 +356,14 @@ export default function CreateBondWizard() {
                 ) : (
                     <button
                         onClick={handleSubmit}
-                        disabled={!canProceedToNext() || isSubmitting}
+                        disabled={!canProceedToNext() || isCreating}
                         className={`px-6 py-3 rounded-lg font-medium transition flex items-center ${
-                            canProceedToNext() && !isSubmitting
+                            canProceedToNext() && !isCreating
                                 ? 'bg-[#39FF14] text-black hover:shadow-[0_0_8px_rgba(57,255,20,0.47)]'
                                 : 'bg-gray-600 text-gray-400 cursor-not-allowed'
                         }`}
                     >
-                      {isSubmitting ? (
+                      {isCreating ? (
                           <>
                             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black mr-2" />
                             Publicando...
@@ -369,48 +380,6 @@ export default function CreateBondWizard() {
             </div>
           </div>
         </main>
-      </div>
-  );
-}
-
-// 🔄 STEP1 - Mantenemos el componente existente por ahora
-function Step1({
-                 bondData,
-                 saveData,
-               }: {
-  bondData: BondData;
-  saveData: (data: any, step: number) => void;
-}) {
-  // ... (mantener implementación existente del Step1)
-  return (
-      <div>
-        <h2 className="text-xl font-semibold mb-6">Datos Generales</h2>
-        {/* Implementación del Step1 existente */}
-        <p className="text-gray-400">
-          📝 Este paso mantiene la implementación existente por ahora...
-        </p>
-      </div>
-  );
-}
-
-// 🔄 STEP4 - Mantenemos el componente existente por ahora
-function Step4({
-                 bondData,
-                 flowsCalculated,
-                 setFlowsCalculated,
-                 confirmationChecked,
-                 setConfirmationChecked,
-                 activeTab,
-                 setActiveTab,
-               }: any) {
-  // ... (mantener implementación existente del Step4)
-  return (
-      <div>
-        <h2 className="text-xl font-semibold mb-6">Revisión y Publicación</h2>
-        {/* Implementación del Step4 existente */}
-        <p className="text-gray-400">
-          📊 Este paso mantiene la implementación existente por ahora...
-        </p>
       </div>
   );
 }
