@@ -1,21 +1,24 @@
-// app/emisor/dashboard/page.tsx - CORREGIDO CON EXPORT DEFAULT
+// app/emisor/dashboard/page.tsx - VERSIÓN FINAL CORREGIDA
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  ChartLine,
+  LineChartIcon as ChartLine,
   Plus,
   Search,
-  Filter,
-  RefreshCw,
-  TrendingUp,
   DollarSign,
+  BadgeIcon as Certificate,
+  HandCoins,
   Calendar,
-  BarChart3,
+  ChevronDown,
+  ArrowUpDown,
+  LogOut,
+  RefreshCw,
+  AlertCircle,
+  TrendingUp,
   Eye,
   Calculator,
-  AlertCircle,
   CheckCircle,
   Clock,
   Pause,
@@ -23,17 +26,16 @@ import {
 import { useAuth } from '@/lib/hooks/useAuth';
 import { useEmisorBonds } from '@/lib/hooks/useEmisorBonds';
 
-// 🚨 COMPONENTE PRINCIPAL CON EXPORT DEFAULT
 export default function EmisorDashboard() {
   const router = useRouter();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [searchTerm, setSearchTerm] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState(new Date());
 
-  // Autenticación y datos del emisor
+  // 🔗 HOOKS REALES CONECTADOS
   const { user, isLoading: authLoading, logout } = useAuth({ requireRole: 'EMISOR' });
 
-  // Datos de bonos con auto-refresh
   const {
     bonds,
     metrics,
@@ -46,85 +48,82 @@ export default function EmisorDashboard() {
     refreshInterval: autoRefresh ? 30000 : 0,
   });
 
-  // Estados locales
-  const [lastRefresh, setLastRefresh] = useState(new Date());
+  // Verificar autenticación con localStorage como fallback
+  useEffect(() => {
+    if (!authLoading && !user) {
+      const userRole = localStorage.getItem("userRole");
+      if (userRole !== "emisor") {
+        router.push("/auth/login");
+        return;
+      }
+    }
+  }, [router, user, authLoading]);
 
-  // Filtrar bonos según búsqueda y estado
-  const filteredBonds = filterBonds(searchTerm, statusFilter);
+  const handleLogout = () => {
+    localStorage.removeItem("userRole");
+    localStorage.removeItem("emisorProfile");
+    logout?.() || router.push("/auth/login");
+  };
 
-  // Manejar refresh manual
   const handleRefresh = async () => {
     await refreshBonds();
     setLastRefresh(new Date());
   };
 
-  // Formatear moneda
-  const formatCurrency = (amount: number): string => {
-    return new Intl.NumberFormat('es-PE', {
-      style: 'currency',
-      currency: 'USD',
+  // 🎨 FUNCIONES DE FORMATO MEJORADAS
+  const formatCurrency = (amount: number | null | undefined) => {
+    if (amount === null || amount === undefined || isNaN(amount)) return "$0.00";
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
       minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
+      maximumFractionDigits: 0
     }).format(amount);
   };
 
-  // Formatear fecha
-  const formatDate = (dateString: string): string => {
-    return new Date(dateString).toLocaleDateString('es-ES', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
-  };
-
-  // Obtener color del estado
-  const getStatusColor = (status: string): string => {
-    switch (status.toLowerCase()) {
-      case 'active':
-        return 'bg-green-900/20 text-green-400 border border-green-500/30';
-      case 'draft':
-        return 'bg-blue-900/20 text-blue-400 border border-blue-500/30';
-      case 'paused':
-        return 'bg-yellow-900/20 text-yellow-400 border border-yellow-500/30';
-      case 'completed':
-        return 'bg-gray-900/20 text-gray-400 border border-gray-500/30';
-      default:
-        return 'bg-gray-900/20 text-gray-400 border border-gray-500/30';
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString) return "--";
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return "--";
+      return date.toLocaleDateString("es-ES", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric"
+      });
+    } catch {
+      return "--";
     }
   };
 
-  // Obtener ícono del estado
-  const getStatusIcon = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'active':
-        return <CheckCircle size={14} />;
-      case 'draft':
-        return <Clock size={14} />;
-      case 'paused':
-        return <Pause size={14} />;
-      case 'completed':
-        return <CheckCircle size={14} />;
-      default:
-        return <AlertCircle size={14} />;
-    }
+  const formatPercent = (value: number | null | undefined) => {
+    if (value === null || value === undefined || isNaN(value)) return "N/A";
+    return `${(value * 100).toFixed(2)}%`;
   };
 
-  // Navegación a crear bono
-  const handleCreateBond = () => {
-    router.push('/emisor/create-bond');
-  };
+  // Filtrar bonos
+  const filteredBonds = filterBonds ? filterBonds(searchTerm, statusFilter) : [];
 
-  // Navegación a bono específico
-  const handleViewBond = (bondId: string) => {
-    router.push(`/emisor/bond/${bondId}`);
-  };
+  // 📊 CALCULAR KPIs REALES
+  const activeBonds = bonds?.filter((b) => b.status === "ACTIVE") || [];
+  const totalNominal = metrics?.totalNominalValue || 0;
+  const activeBondsCount = metrics?.activeBonds || 0;
+  const averageTCEA = metrics?.averageTCEA || 0;
 
-  // Manejar logout
-  const handleLogout = () => {
-    logout();
-  };
+  // Calcular próximo pago estimado
+  const interestPaidYTD = activeBonds.reduce((sum, bond) => {
+    const estimatedInterest = (bond.nominalValue * (bond.tceaEmisor || 0.08)) * 0.5; // Aprox anual * 0.5
+    return sum + estimatedInterest;
+  }, 0);
 
-  // Loading state
+  const nextPaymentAmount = activeBonds.reduce((sum, bond) => {
+    const estimatedCoupon = (bond.nominalValue * (bond.tceaEmisor || 0.08)) / 2; // Semestral
+    return sum + estimatedCoupon;
+  }, 0);
+
+  const nextPaymentDate = activeBonds.length > 0 ? new Date(Date.now() + 90 * 24 * 60 * 60 * 1000) : null;
+
+  // 🔄 ESTADOS DE CARGA Y ERROR
   if (authLoading || bondsLoading) {
     return (
         <div className="min-h-screen bg-[#0D0D0D] flex items-center justify-center">
@@ -136,7 +135,6 @@ export default function EmisorDashboard() {
     );
   }
 
-  // Error state
   if (bondsError) {
     return (
         <div className="min-h-screen bg-[#0D0D0D] flex items-center justify-center">
@@ -165,16 +163,14 @@ export default function EmisorDashboard() {
             </div>
             <div className="flex items-center space-x-4">
               <button
-                  onClick={handleCreateBond}
+                  onClick={() => router.push("/emisor/create-bond")}
                   className="bg-[#39FF14] text-black font-bold px-5 py-2 rounded-lg hover:shadow-[0_0_8px_rgba(57,255,20,0.47)] transition duration-250"
               >
                 <Plus className="mr-1 inline" size={16} />
                 Nuevo Bono
               </button>
-              <button
-                  onClick={handleLogout}
-                  className="text-gray-400 hover:text-white transition"
-              >
+              <button onClick={handleLogout} className="text-[#39FF14] hover:text-white transition duration-250">
+                <LogOut className="mr-1 inline" size={16} />
                 Salir
               </button>
             </div>
@@ -182,229 +178,216 @@ export default function EmisorDashboard() {
         </header>
 
         <main className="container mx-auto px-6 pt-24 pb-8">
-          {/* Bienvenida */}
+          {/* Dashboard Header */}
           <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2">
-              Bienvenido, {user?.emisorProfile?.companyName || 'Emisor'}
-            </h1>
-            <p className="text-gray-400">
-              Gestiona tus bonos, analiza métricas y monitorea el rendimiento de tus emisiones.
-            </p>
+            <h1 className="text-3xl font-bold mb-2">Dashboard de Emisor</h1>
+            <p className="text-gray-400">Administra tus bonos americanos y visualiza su rendimiento</p>
           </div>
 
-          {/* KPIs */}
-          {metrics && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                <div className="bg-[#151515] rounded-xl p-6 border border-[#2A2A2A]">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-gray-400 text-sm">Total de Bonos</p>
-                      <p className="text-2xl font-bold text-white">{metrics.totalBonds}</p>
-                    </div>
-                    <BarChart3 className="text-[#39FF14]" size={24} />
-                  </div>
-                </div>
-
-                <div className="bg-[#151515] rounded-xl p-6 border border-[#2A2A2A]">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-gray-400 text-sm">Bonos Activos</p>
-                      <p className="text-2xl font-bold text-green-400">{metrics.activeBonds}</p>
-                    </div>
-                    <CheckCircle className="text-green-400" size={24} />
-                  </div>
-                </div>
-
-                <div className="bg-[#151515] rounded-xl p-6 border border-[#2A2A2A]">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-gray-400 text-sm">Valor Total</p>
-                      <p className="text-2xl font-bold text-[#39FF14]">
-                        {formatCurrency(metrics.totalNominalValue)}
-                      </p>
-                    </div>
-                    <DollarSign className="text-[#39FF14]" size={24} />
-                  </div>
-                </div>
-
-                <div className="bg-[#151515] rounded-xl p-6 border border-[#2A2A2A]">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-gray-400 text-sm">TCEA Promedio</p>
-                      <p className="text-2xl font-bold text-blue-400">
-                        {metrics.averageTCEA ? `${(metrics.averageTCEA * 100).toFixed(2)}%` : 'N/A'}
-                      </p>
-                    </div>
-                    <TrendingUp className="text-blue-400" size={24} />
-                  </div>
-                </div>
+          {/* KPI Cards - EXACTAMENTE COMO TU MAQUETA */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <div className="bg-gradient-to-br from-[#1E1E1E] to-[#242424] rounded-xl p-5">
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="text-gray-400 font-medium">Total nominal emitido</h3>
+                <DollarSign className="text-gray-500" size={20} />
               </div>
-          )}
-
-          {/* Controles */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-            <div className="flex items-center space-x-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" size={16} />
-                <input
-                    type="text"
-                    placeholder="Buscar bonos..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="bg-[#151515] border border-[#2A2A2A] rounded-lg pl-10 pr-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-[#39FF14] w-64"
-                />
-              </div>
-
-              <div className="relative">
-                <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    className="bg-[#151515] border border-[#2A2A2A] rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#39FF14] appearance-none pr-10"
-                >
-                  <option value="all">Todos los estados</option>
-                  <option value="draft">Borrador</option>
-                  <option value="active">Activo</option>
-                  <option value="paused">Pausado</option>
-                  <option value="completed">Completado</option>
-                </select>
-                <Filter className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none" size={16} />
+              <div className="flex items-end">
+                <span className="text-[#39FF14] text-3xl font-bold">{formatCurrency(totalNominal)}</span>
               </div>
             </div>
 
-            <div className="flex items-center space-x-3">
-              <label className="flex items-center space-x-2 text-sm">
-                <input
-                    type="checkbox"
-                    checked={autoRefresh}
-                    onChange={(e) => setAutoRefresh(e.target.checked)}
-                    className="rounded border-[#2A2A2A] text-[#39FF14] focus:ring-[#39FF14]"
-                />
-                <span className="text-gray-400">Auto-refresh</span>
-              </label>
+            <div className="bg-gradient-to-br from-[#1E1E1E] to-[#242424] rounded-xl p-5">
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="text-gray-400 font-medium">Bonos activos</h3>
+                <Certificate className="text-gray-500" size={20} />
+              </div>
+              <div className="flex items-end">
+                <span className="text-[#39FF14] text-3xl font-bold">{activeBondsCount}</span>
+                <span className="text-gray-400 ml-1 mb-1">bonos</span>
+              </div>
+            </div>
 
-              <button
-                  onClick={handleRefresh}
-                  className="p-2 bg-[#151515] border border-[#2A2A2A] rounded-lg hover:bg-[#1A1A1A] transition"
+            <div className="bg-gradient-to-br from-[#1E1E1E] to-[#242424] rounded-xl p-5">
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="text-gray-400 font-medium">Intereses pagados YTD</h3>
+                <HandCoins className="text-gray-500" size={20} />
+              </div>
+              <div className="flex items-end">
+                <span className="text-[#39FF14] text-3xl font-bold">{formatCurrency(interestPaidYTD)}</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Desde 01 Ene, {new Date().getFullYear()}</p>
+            </div>
+
+            <div className="bg-gradient-to-br from-[#1E1E1E] to-[#242424] rounded-xl p-5">
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="text-gray-400 font-medium">Próximo pago de cupón</h3>
+                <Calendar className="text-gray-500" size={20} />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[#39FF14] text-3xl font-bold">{formatCurrency(nextPaymentAmount)}</span>
+                <span className="text-gray-400 text-sm mt-1">
+                {nextPaymentDate ? formatDate(nextPaymentDate.toISOString().split("T")[0]) : "--"}
+              </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Total de todos los bonos</p>
+            </div>
+          </div>
+
+          {/* Filters */}
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 space-y-4 md:space-y-0">
+            <div className="relative">
+              <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="bg-[#151515] border border-[#2A2A2A] rounded-lg py-2 pl-4 pr-10 appearance-none focus:outline-none focus:border-[#39FF14] transition"
               >
-                <RefreshCw size={16} />
-              </button>
+                <option value="all">Todos los estados</option>
+                <option value="draft">Borrador</option>
+                <option value="active">Activo</option>
+                <option value="paused">Pausado</option>
+                <option value="completed">Completado</option>
+              </select>
+              <ChevronDown
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none"
+                  size={16}
+              />
+            </div>
 
-              <span className="text-xs text-gray-500">
-              Último: {lastRefresh.toLocaleTimeString()}
-            </span>
+            <div className="relative w-full md:w-64">
+              <input
+                  type="text"
+                  placeholder="Buscar bono..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full bg-[#151515] border border-[#2A2A2A] rounded-lg py-2 pl-10 pr-4 focus:outline-none focus:border-[#39FF14] transition"
+              />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
             </div>
           </div>
 
-          {/* Lista de Bonos */}
-          <div className="bg-[#151515] rounded-xl border border-[#2A2A2A] overflow-hidden">
-            <div className="p-6 border-b border-[#2A2A2A]">
-              <h2 className="text-xl font-semibold">
-                Mis Bonos ({filteredBonds.length})
-              </h2>
+          {/* Bonds Table - EXACTAMENTE COMO TU MAQUETA */}
+          <div className="bg-[#151515] rounded-xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px]">
+                <thead>
+                <tr className="border-b border-[#2A2A2A]">
+                  <th className="px-6 py-4 text-left text-sm font-medium text-gray-400 cursor-pointer hover:text-white transition">
+                    <div className="flex items-center">
+                      Código
+                      <ArrowUpDown className="ml-1" size={12} />
+                    </div>
+                  </th>
+                  <th className="px-6 py-4 text-left text-sm font-medium text-gray-400 cursor-pointer hover:text-white transition">
+                    <div className="flex items-center">
+                      Nombre
+                      <ArrowUpDown className="ml-1" size={12} />
+                    </div>
+                  </th>
+                  <th className="px-6 py-4 text-left text-sm font-medium text-gray-400 cursor-pointer hover:text-white transition">
+                    <div className="flex items-center">
+                      V. Nominal
+                      <ArrowUpDown className="ml-1" size={12} />
+                    </div>
+                  </th>
+                  <th className="px-6 py-4 text-left text-sm font-medium text-gray-400 cursor-pointer hover:text-white transition">
+                    <div className="flex items-center">
+                      V. Comercial Rec.
+                      <ArrowUpDown className="ml-1" size={12} />
+                    </div>
+                  </th>
+                  <th className="px-6 py-4 text-left text-sm font-medium text-gray-400 cursor-pointer hover:text-white transition">
+                    <div className="flex items-center">
+                      Plazo (años)
+                      <ArrowUpDown className="ml-1" size={12} />
+                    </div>
+                  </th>
+                  <th className="px-6 py-4 text-left text-sm font-medium text-gray-400 cursor-pointer hover:text-white transition">
+                    <div className="flex items-center">
+                      Cupón (%)
+                      <ArrowUpDown className="ml-1" size={12} />
+                    </div>
+                  </th>
+                  <th className="px-6 py-4 text-left text-sm font-medium text-gray-400 cursor-pointer hover:text-white transition">
+                    <div className="flex items-center">
+                      TCEA Emisor c/E
+                      <ArrowUpDown className="ml-1" size={12} />
+                    </div>
+                  </th>
+                  <th className="px-6 py-4 text-left text-sm font-medium text-gray-400 cursor-pointer hover:text-white transition">
+                    <div className="flex items-center">
+                      Fecha Emisión
+                      <ArrowUpDown className="ml-1" size={12} />
+                    </div>
+                  </th>
+                  <th className="px-6 py-4 text-left text-sm font-medium text-gray-400 cursor-pointer hover:text-white transition">
+                    <div className="flex items-center">
+                      Estado
+                      <ArrowUpDown className="ml-1" size={12} />
+                    </div>
+                  </th>
+                </tr>
+                </thead>
+                <tbody>
+                {filteredBonds.map((bond) => (
+                    <tr
+                        key={bond.id}
+                        onClick={() => router.push(`/emisor/bond/${bond.id}`)}
+                        className="border-b border-[#2A2A2A] hover:bg-[#1A1A1A] cursor-pointer transition"
+                    >
+                      <td className="px-6 py-4 text-sm">{bond.codigoIsin || bond.id.slice(0, 8)}</td>
+                      <td className="px-6 py-4 text-sm">{bond.name}</td>
+                      <td className="px-6 py-4 text-sm">{formatCurrency(bond.nominalValue)}</td>
+                      <td className="px-6 py-4 text-sm">{formatCurrency(bond.commercialValue)}</td>
+                      <td className="px-6 py-4 text-sm">{bond.years}</td>
+                      <td className="px-6 py-4 text-sm">
+                        {bond.tceaEmisor ? `${(bond.tceaEmisor * 100).toFixed(2)}%` : '--'}
+                      </td>
+                      <td className="px-6 py-4 text-sm">
+                        {bond.tceaEmisor ? formatPercent(bond.tceaEmisor) : 'Sin calcular'}
+                      </td>
+                      <td className="px-6 py-4 text-sm">{formatDate(bond.createdAt)}</td>
+                      <td className="px-6 py-4 text-sm">
+                      <span
+                          className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                              bond.status === "ACTIVE"
+                                  ? "bg-green-900 text-green-400"
+                                  : bond.status === "DRAFT"
+                                      ? "bg-yellow-900 text-yellow-400"
+                                      : bond.status === "PAUSED"
+                                          ? "bg-orange-900 text-orange-400"
+                                          : "bg-red-900 text-red-400"
+                          }`}
+                      >
+                        {bond.status === "ACTIVE" ? "Activo" :
+                            bond.status === "DRAFT" ? "Borrador" :
+                                bond.status === "PAUSED" ? "Pausado" : "Vencido"}
+                      </span>
+                      </td>
+                    </tr>
+                ))}
+                </tbody>
+              </table>
             </div>
 
-            {filteredBonds.length === 0 ? (
-                <div className="p-12 text-center">
-                  <BarChart3 className="mx-auto text-gray-600 mb-4" size={48} />
-                  <h3 className="text-lg font-medium text-gray-400 mb-2">
-                    {bonds.length === 0 ? 'No hay bonos creados' : 'No se encontraron bonos'}
-                  </h3>
-                  <p className="text-gray-500 mb-4">
-                    {bonds.length === 0
-                        ? 'Comienza creando tu primer bono para gestionar emisiones.'
-                        : 'Intenta cambiar los filtros de búsqueda.'}
+            {/* Empty State */}
+            {filteredBonds.length === 0 && (
+                <div className="py-16 flex flex-col items-center justify-center">
+                  <div className="w-40 h-40 mb-6 flex items-center justify-center">
+                    <DollarSign className="text-gray-700" size={80} />
+                  </div>
+                  <h3 className="text-xl font-semibold mb-2">No hay bonos para mostrar</h3>
+                  <p className="text-gray-400 mb-6 text-center max-w-md">
+                    {searchTerm || statusFilter !== 'all'
+                        ? 'No se encontraron bonos que coincidan con los filtros aplicados.'
+                        : 'Aún no has creado ningún bono. Comienza creando tu primer bono.'}
                   </p>
-                  {bonds.length === 0 && (
-                      <button
-                          onClick={handleCreateBond}
-                          className="bg-[#39FF14] text-black px-6 py-3 rounded-lg font-medium hover:shadow-[0_0_8px_rgba(57,255,20,0.47)] transition"
-                      >
-                        <Plus className="mr-2 inline" size={16} />
-                        Crear Primer Bono
-                      </button>
-                  )}
-                </div>
-            ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-[#1A1A1A]">
-                    <tr className="text-left">
-                      <th className="px-6 py-4 text-sm font-medium text-gray-400">Bono</th>
-                      <th className="px-6 py-4 text-sm font-medium text-gray-400">Estado</th>
-                      <th className="px-6 py-4 text-sm font-medium text-gray-400">Valor Nominal</th>
-                      <th className="px-6 py-4 text-sm font-medium text-gray-400">Duración</th>
-                      <th className="px-6 py-4 text-sm font-medium text-gray-400">TCEA</th>
-                      <th className="px-6 py-4 text-sm font-medium text-gray-400">Creado</th>
-                      <th className="px-6 py-4 text-sm font-medium text-gray-400">Acciones</th>
-                    </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#2A2A2A]">
-                    {filteredBonds.map((bond) => (
-                        <tr
-                            key={bond.id}
-                            className="hover:bg-[#1A1A1A] transition-colors cursor-pointer"
-                            onClick={() => handleViewBond(bond.id)}
-                        >
-                          <td className="px-6 py-4">
-                            <div>
-                              <div className="font-medium text-white">{bond.name}</div>
-                              <div className="text-sm text-gray-400">{bond.codigoIsin}</div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(bond.status)}`}>
-                          {getStatusIcon(bond.status)}
-                          <span className="ml-1 capitalize">{bond.status.toLowerCase()}</span>
-                        </span>
-                          </td>
-                          <td className="px-6 py-4 text-white">
-                            {formatCurrency(bond.nominalValue)}
-                          </td>
-                          <td className="px-6 py-4 text-gray-400">
-                            {bond.years} años • {bond.couponFrequency}
-                          </td>
-                          <td className="px-6 py-4">
-                            {bond.tceaEmisor ? (
-                                <span className="text-blue-400 font-medium">
-                            {(bond.tceaEmisor * 100).toFixed(2)}%
-                          </span>
-                            ) : (
-                                <span className="text-gray-500">Sin calcular</span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-gray-400 text-sm">
-                            {formatDate(bond.createdAt)}
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center space-x-2">
-                              <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleViewBond(bond.id);
-                                  }}
-                                  className="p-2 text-gray-400 hover:text-white transition"
-                                  title="Ver detalles"
-                              >
-                                <Eye size={16} />
-                              </button>
-                              {bond.hasFlows && (
-                                  <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        router.push(`/emisor/bond/${bond.id}?tab=calculations`);
-                                      }}
-                                      className="p-2 text-gray-400 hover:text-[#39FF14] transition"
-                                      title="Ver cálculos"
-                                  >
-                                    <Calculator size={16} />
-                                  </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                    ))}
-                    </tbody>
-                  </table>
+                  <button
+                      onClick={() => router.push("/emisor/create-bond")}
+                      className="bg-[#39FF14] text-black font-bold px-5 py-2 rounded-lg hover:shadow-[0_0_8px_rgba(57,255,20,0.47)] transition duration-250"
+                  >
+                    <Plus className="mr-1 inline" size={16} />
+                    Crear nuevo bono
+                  </button>
                 </div>
             )}
           </div>

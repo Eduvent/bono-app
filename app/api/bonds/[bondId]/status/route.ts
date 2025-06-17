@@ -1,4 +1,7 @@
 import {NextRequest, NextResponse} from "next/server";
+import {PrismaClient} from "../../../../../lib/generated/client"
+
+const prisma = new PrismaClient()
 
 export async function PUT(
     request: NextRequest,
@@ -36,4 +39,10 @@ export async function PUT(
             { status: 500 }
         );
     }
+}
+
+if (process.env.NODE_ENV !== 'development') {
+    process.on('beforeExit', async () => {
+        await prisma.$disconnect();
+    });
 }
