@@ -25,6 +25,8 @@ export default function EmisorProfilePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    console.log('🚀 Enviando datos:', formData)
+
     if (!formData.companyName || !formData.ruc || !formData.sector || !formData.country) {
       alert("Por favor completa todos los campos requeridos.")
       return

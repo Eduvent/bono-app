@@ -1,14 +1,26 @@
-// next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+    // Mover serverComponentsExternalPackages a serverExternalPackages
+    serverExternalPackages: ['@prisma/client', 'prisma'],
+
     experimental: {
-        serverComponentsExternalPackages: ['prisma'],
+        // Remover serverComponentsExternalPackages de aquí
+        // serverComponentsExternalPackages: ['@prisma/client', 'prisma'], // ← ELIMINAR ESTA LÍNEA
     },
-    webpack: (config) => {
-        config.externals.push({
-            'utf-8-validate': 'commonjs utf-8-validate',
-            'bufferutil': 'commonjs bufferutil',
-        });
+
+    // Otras configuraciones que puedas tener
+    transpilePackages: ['lucide-react'],
+
+    webpack: (config, { dev, isServer }) => {
+        // Configuración adicional de webpack si es necesaria
+        if (!isServer) {
+            config.resolve.fallback = {
+                ...config.resolve.fallback,
+                fs: false,
+                net: false,
+                tls: false,
+            };
+        }
         return config;
     },
 };
