@@ -37,7 +37,7 @@ const CreateBondSchema = z.object({
     periodicidadCapitalizacion: z.string().default('semestral'),
     tasaAnual: z.number().min(0).max(1, 'Tasa debe estar entre 0 y 1'),
     tasaDescuento: z.number().min(0).max(1).optional(),
-    inflacionSerie: z.array(z.number()).default([]),
+    inflacionSerie: z.array(z.number()).default([]), // Debe tener numAnios valores
     primaPorcentaje: z.number().min(0).default(0),
     impuestoRenta: z.number().min(0).max(1).default(0.3),
 
@@ -48,7 +48,7 @@ const CreateBondSchema = z.object({
     cavaliPorcentaje: z.number().min(0).default(0),
 
     // Períodos de gracia
-    graciaSerie: z.array(z.enum(['S', 'P', 'T'])).default([]),
+    graciaSerie: z.array(z.enum(['S', 'P', 'T'])).default([]), // Un valor por año
 
     // Metadata
     emisorId: z.string().cuid('ID de emisor inválido'),

@@ -111,8 +111,8 @@ export default function Step4Dynamic({ bondData, bondId }: Step4Props) {
         // ✅ --- FIN DE LA CORRECCIÓN ---
 
         const inflacionAnual = parseFloat(bondData.step2?.inflacionAnual || '0') / 100;
-        const inflacionSerie = Array(numAnios).fill(inflacionAnual);
-
+        const inflacionSerie = Array(numAnios).fill(inflacionAnual); // SIEMPRE tendrá longitud 'numAnios'
+\
         return {
             valorNominal: parseFloat(bondData.step1?.valorNominal || '1000'),
             valorComercial: parseFloat(bondData.step1?.valorComercial || '1050'),

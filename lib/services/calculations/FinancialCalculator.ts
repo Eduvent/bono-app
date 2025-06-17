@@ -478,7 +478,7 @@ export class FinancialCalculator {
         if (inputs.inflacionSerie.length !== inputs.numAnios) {
             errors.push({
                 field: 'inflacionSerie',
-                message: `La serie de inflación debe tener ${inputs.numAnios} elementos`,
+                message: `La serie de inflación debe tener ${inputs.numAnios} elementos (recibidos ${inputs.inflacionSerie.length})`,
                 code: 'INVALID_INFLATION_SERIES_LENGTH'
             });
         }
@@ -486,7 +486,7 @@ export class FinancialCalculator {
         if (inputs.graciaSerie.length !== inputs.numAnios) {
             errors.push({
                 field: 'graciaSerie',
-                message: `La serie de gracia debe tener ${inputs.numAnios} elementos`,
+                message: `La serie de gracia debe tener ${inputs.numAnios} elementos (recibidos ${inputs.graciaSerie.length})`,
                 code: 'INVALID_GRACE_SERIES_LENGTH'
             });
         }

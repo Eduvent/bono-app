@@ -266,7 +266,17 @@ describe('FinancialCalculator - Excel Validation Tests', () => {
             };
 
             await expect(calculator.calculate(invalidInputs))
-                .rejects.toThrow('Validation failed');
+                .rejects.toThrow('La serie de inflación debe tener 5 elementos (recibidos 2)');
+        });
+
+        test('Debe rechazar longitud incorrecta de graciaSerie', async () => {
+            const invalidInputs = {
+                ...EXCEL_TEST_INPUTS,
+                graciaSerie: ['T', 'T'] as typeof EXCEL_TEST_INPUTS.graciaSerie
+            };
+
+            await expect(calculator.calculate(invalidInputs))
+                .rejects.toThrow('La serie de gracia debe tener 5 elementos (recibidos 2)');
         });
 
         test('Debe rechazar tasa anual mayor a 100%', async () => {

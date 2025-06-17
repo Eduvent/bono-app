@@ -126,7 +126,8 @@ const inputs = {
   numAnios: 5,
   frecuenciaCupon: 'semestral',
   tasaAnual: 0.08, // 8%
-  // ... más configuraciones
+  inflacionSerie: [0.10, 0.10, 0.10, 0.10, 0.10], // numAnios valores (uno por año)
+  graciaSerie: ['S', 'S', 'S', 'S', 'S'],         // un tipo de gracia por año
 };
 
 const resultado = await calculator.calculate(inputs);
@@ -135,7 +136,7 @@ console.log('TCEA Emisor:', resultado.metricas.tceaEmisor);
 console.log('TREA Bonista:', resultado.metricas.treaBonista);
 console.log('Flujos:', resultado.flujos);
 ```
-
+**Nota:** Los arreglos `inflacionSerie` y `graciaSerie` deben tener exactamente `numAnios` elementos, es decir, un valor por cada año del bono.
 ## 🔌 **APIs Disponibles**
 
 ### **Cálculos de Bonos**

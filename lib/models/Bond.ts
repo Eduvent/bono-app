@@ -199,6 +199,20 @@ export class BondModel {
             ...directBondDataToUpdate // Contiene solo los campos directos del modelo Bond que están en UpdateBondSchema
         } = validatedData;
 
+        if (directBondDataToUpdate.numAnios !== undefined) {
+            const newLength = directBondDataToUpdate.numAnios;
+            if (inflacionSerie && inflacionSerie.length !== newLength) {
+                throw new Error(
+                    `Validation failed: inflacionSerie length (${inflacionSerie.length}) must match numAnios (${newLength})`
+                );
+            }
+            if (graciaSerie && graciaSerie.length !== newLength) {
+                throw new Error(
+                    `Validation failed: graciaSerie length (${graciaSerie.length}) must match numAnios (${newLength})`
+                );
+            }
+        }
+
         const bondUpdatePayload: Prisma.BondUpdateInput = {};
         // Poblar selectivamente bondUpdatePayload solo con campos definidos en directBondDataToUpdate
         for (const key of Object.keys(directBondDataToUpdate) as Array<keyof typeof directBondDataToUpdate>) {
