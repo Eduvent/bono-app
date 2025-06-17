@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import React, { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft, Calculator, FileText, BarChart3, Settings,
@@ -20,12 +20,13 @@ interface BondPageProps {
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export default function BondPage({ params, searchParams }: BondPageProps) {
-  const { bondId } = params;
+  const { bondId } = React.use(params);
+  const { tab, created } = React.use(searchParams);
   const router = useRouter();
 
   // Estados locales
-  const [activeTab, setActiveTab] = useState(searchParams.tab || "overview");
-  const [showSuccessMessage, setShowSuccessMessage] = useState(!!searchParams.created);
+  const [activeTab, setActiveTab] = useState(tab || "overview");
+  const [showSuccessMessage, setShowSuccessMessage] = useState(!!created);
 
   // Hooks de autenticación y datos
   const { user } = useAuth({ requireRole: 'EMISOR' });

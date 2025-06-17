@@ -2,10 +2,10 @@ import {NextRequest, NextResponse} from "next/server";
 
 export async function PUT(
     request: NextRequest,
-    { params }: { params: { bondId: string } }
+    { params }: { params: Promise<{ bondId: string }> }
 ) {
     try {
-        const { bondId } = params;
+        const { bondId } = await params;
         const { status, publishedAt } = await request.json();
 
         const validStatuses = ['DRAFT', 'ACTIVE', 'PAUSED', 'COMPLETED'];

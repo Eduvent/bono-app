@@ -35,11 +35,11 @@ const QuerySchema = z.object({
 
 export async function GET(
     request: NextRequest,
-    { params }: { params: { bondId: string } }
+    { params }: { params: Promise<{ bondId: string }> }
 ) {
     try {
         // 1. Validar parámetros
-        const { bondId } = ParamsSchema.parse(params);
+        const { bondId } = ParamsSchema.parse(await params);
 
         const searchParams = new URL(request.url).searchParams;
         const { role, period_from, period_to, format, auto_calculate } = QuerySchema.parse({
@@ -212,10 +212,10 @@ export async function GET(
  */
 export async function POST(
     request: NextRequest,
-    { params }: { params: { bondId: string } }
+    { params }: { params: Promise<{ bondId: string }> }
 ) {
     try {
-        const { bondId } = ParamsSchema.parse(params);
+        const { bondId } = ParamsSchema.parse(await params);
 
         // Verificar que el bono existe
         const bond = await prisma.bond.findUnique({

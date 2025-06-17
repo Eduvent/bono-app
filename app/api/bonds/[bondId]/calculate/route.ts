@@ -31,11 +31,11 @@ const ParamsSchema = z.object({
 
 export async function POST(
     request: NextRequest,
-    { params }: { params: { bondId: string } }
+    { params }: { params: Promise<{ bondId: string }> }
 ) {
     try {
-        // 1. Validar parámetros de URL
-        const { bondId } = ParamsSchema.parse(params);
+        // 1. Validar parámetros de URL (params es Promise en Next.js 15)
+        const { bondId } = ParamsSchema.parse(await params);
 
         // 2. Validar cuerpo del request
         let body;
@@ -172,10 +172,10 @@ export async function POST(
  */
 export async function GET(
     request: NextRequest,
-    { params }: { params: { bondId: string } }
+    { params }: { params: Promise<{ bondId: string }> }
 ) {
     try {
-        const { bondId } = ParamsSchema.parse(params);
+        const { bondId } = ParamsSchema.parse(await params);
 
         // Verificar que el bono existe
         const bond = await prisma.bond.findUnique({
@@ -252,10 +252,11 @@ export async function GET(
  */
 export async function DELETE(
     request: NextRequest,
-    { params }: { params: { bondId: string } }
+    { params }: { params: Promise<{ bondId: string }> }
 ) {
     try {
-        const { bondId } = ParamsSchema.parse(params);
+        const { bondId } = ParamsSchema.parse(await params);
+
 
         // Verificar que el bono existe
         const bond = await prisma.bond.findUnique({
