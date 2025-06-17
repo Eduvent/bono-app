@@ -37,11 +37,11 @@ interface GracePeriodConfig {
 
 interface Step2Props {
     bondData: BondData;
-    saveData: (data: any, step: number) => void;
+    saveDataAction: (data: any, step: number) => void;
 }
 
 // ✅ EXPORT POR DEFECTO
-export default function Step2Dynamic({ bondData, saveData }: Step2Props) {
+export default function Step2Dynamic({ bondData, saveDataAction }: Step2Props) {
     const [formData, setFormData] = useState({
         tipoTasa: bondData.step2?.tipoTasa || 'efectiva',
         periodicidadCapitalizacion: bondData.step2?.periodicidadCapitalizacion || 'semestral',
@@ -85,7 +85,7 @@ export default function Step2Dynamic({ bondData, saveData }: Step2Props) {
         const newFormData = { ...formData, [field]: value };
         setFormData(newFormData);
         setErrors({ ...errors, [field]: false });
-        saveData(newFormData, 2);
+        saveDataAction(newFormData, 2);
     };
 
     const handleGracePeriodsChange = (numPeriods: number) => {
@@ -109,7 +109,7 @@ export default function Step2Dynamic({ bondData, saveData }: Step2Props) {
         };
 
         setFormData(newFormData);
-        saveData(newFormData, 2);
+        saveDataAction(newFormData, 2);
     };
 
     const updateGraceType = (couponNumber: number, newGraceType: 'T' | 'P' | 'S') => {
@@ -125,7 +125,7 @@ export default function Step2Dynamic({ bondData, saveData }: Step2Props) {
         };
 
         setFormData(newFormData);
-        saveData(newFormData, 2);
+        saveDataAction(newFormData, 2);
     };
 
     const getBlockStyle = (graceType: 'T' | 'P' | 'S') => {

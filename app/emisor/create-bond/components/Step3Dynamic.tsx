@@ -24,11 +24,11 @@ interface BondData {
 
 interface Step3Props {
     bondData: BondData;
-    saveData: (data: any, step: number) => void;
+    saveDataAction: (data: any, step: number) => void;
 }
 
 // ✅ EXPORT POR DEFECTO
-export default function Step3Dynamic({ bondData, saveData }: Step3Props) {
+export default function Step3Dynamic({ bondData, saveDataAction }: Step3Props) {
     const [formData, setFormData] = useState({
         estructuracionEmisor: bondData.step3?.estructuracionEmisor || "1.00",
         colocacionEmisor: bondData.step3?.colocacionEmisor || "0.25",
@@ -69,7 +69,7 @@ export default function Step3Dynamic({ bondData, saveData }: Step3Props) {
         setFormData(newFormData);
 
         const newCosts = calculateCosts();
-        saveData(
+        saveDataAction(
             {
                 ...newFormData,
                 emisorTotalAbs: newCosts.emisorTotalAbs.toString(),

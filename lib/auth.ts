@@ -1,34 +1,50 @@
-import jwt from 'jsonwebtoken';
+// lib/auth.ts - CORREGIDO CON 'jose' Y MANEJO DE ERRORES
 
-// FORZAR carga de variables de entorno con fallback
+import {SignJWT, jwtVerify, JWTPayload} from 'jose';
+
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-jwt-key-2024-bonoapp';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
 
-// Debug para verificar qué secret se está usando
-console.log('🔐 AUTH MODULE: JWT_SECRET disponible:', !!process.env.JWT_SECRET);
-console.log('🔐 AUTH MODULE: Usando secret length:', JWT_SECRET.length);
-console.log('🔐 AUTH MODULE: Secret preview:', JWT_SECRET.substring(0, 10) + '...');
+const key = new TextEncoder().encode(JWT_SECRET);
 
-export interface JwtPayload {
+console.log('🔐 AUTH MODULE: JWT_SECRET disponible:', !!process.env.JWT_SECRET);
+
+export interface JwtPayload extends JWTPayload{
     userId: string;
 }
 
-export function signToken(payload: JwtPayload) {
-    console.log('🔐 SIGN: Generando token con secret length:', JWT_SECRET.length);
-    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
-    console.log('🔐 SIGN: Token generado length:', token.length);
+export async function signToken(payload: JwtPayload): Promise<string> {
+    console.log('🔐 SIGN: Generando token...');
+
+    const token = await new SignJWT(payload)
+        .setProtectedHeader({ alg: 'HS256' }) // Algoritmo de firma
+        .setIssuedAt() // Fecha de emisión (ahora)
+        .setExpirationTime(JWT_EXPIRES_IN) // Tiempo de expiración
+        .sign(key); // Firmar con la clave codificada
+
+    console.log('🔐 SIGN: Token generado.');
     return token;
 }
 
-export function verifyToken(token: string): JwtPayload | null {
+
+export async function verifyToken(token: string): Promise<JwtPayload | null> {
     try {
-        console.log('🔐 VERIFY: Verificando token con secret length:', JWT_SECRET.length);
-        console.log('🔐 VERIFY: Token length:', token.length);
-        const payload = jwt.verify(token, JWT_SECRET) as JwtPayload;
+        console.log('🔐 VERIFY: Verificando token...');
+
+        const { payload } = await jwtVerify<JwtPayload>(token, key);
+
         console.log('🔐 VERIFY: Token válido para userId:', payload.userId);
         return payload;
+
     } catch (error) {
-        console.log('🔐 VERIFY: Token inválido:', error.message);
+        // ✅ CORRECCIÓN: Manejar el error de tipo 'unknown'
+        if (error instanceof Error) {
+            // Los errores de 'jose' (token expirado, firma inválida) entran aquí
+            console.error('🔐 VERIFY: Token inválido:', error.message);
+        } else {
+            // Para casos donde se lanza algo que no es un objeto Error
+            console.error('🔐 VERIFY: Error desconocido durante la verificación del token:', error);
+        }
         return null;
     }
 }

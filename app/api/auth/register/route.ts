@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
             }
         });
 
-        const token = signToken({ userId: user.id });
+        const token = await signToken({ userId: user.id });
         const response = NextResponse.json({ success: true, token, user: { id: user.id, email: user.email, role: user.role } }, { status: 201 });
         const secureCookie = process.env.SECURE_COOKIES === 'true';
         response.cookies.set({

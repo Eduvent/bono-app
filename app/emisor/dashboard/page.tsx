@@ -26,6 +26,18 @@ import {
 import { useAuth } from '@/lib/hooks/useAuth';
 import { useEmisorBonds } from '@/lib/hooks/useEmisorBonds';
 
+interface Bond {
+  id: string;
+  status: 'ACTIVE' | 'DRAFT' | 'PAUSED' | 'COMPLETED';
+  name: string;
+  codigoIsin: string | null;
+  nominalValue: number;
+  commercialValue: number;
+  years: number;
+  tceaEmisor: number | null;
+  createdAt: string;
+}
+
 export default function EmisorDashboard() {
   const router = useRouter();
   const [statusFilter, setStatusFilter] = useState("all");
@@ -105,18 +117,17 @@ export default function EmisorDashboard() {
   const filteredBonds = filterBonds ? filterBonds(searchTerm, statusFilter) : [];
 
   // 📊 CALCULAR KPIs REALES
-  const activeBonds = bonds?.filter((b) => b.status === "ACTIVE") || [];
-  const totalNominal = metrics?.totalNominalValue || 0;
+  const activeBonds = bonds?.filter((b: Bond) => b.status === "ACTIVE") || [];  const totalNominal = metrics?.totalNominalValue || 0;
   const activeBondsCount = metrics?.activeBonds || 0;
   const averageTCEA = metrics?.averageTCEA || 0;
 
   // Calcular próximo pago estimado
-  const interestPaidYTD = activeBonds.reduce((sum, bond) => {
+  const interestPaidYTD = activeBonds.reduce((sum: number, bond: Bond) => {
     const estimatedInterest = (bond.nominalValue * (bond.tceaEmisor || 0.08)) * 0.5; // Aprox anual * 0.5
     return sum + estimatedInterest;
   }, 0);
 
-  const nextPaymentAmount = activeBonds.reduce((sum, bond) => {
+  const nextPaymentAmount = activeBonds.reduce((sum: number, bond: Bond) => {
     const estimatedCoupon = (bond.nominalValue * (bond.tceaEmisor || 0.08)) / 2; // Semestral
     return sum + estimatedCoupon;
   }, 0);
@@ -328,7 +339,7 @@ export default function EmisorDashboard() {
                 </tr>
                 </thead>
                 <tbody>
-                {filteredBonds.map((bond) => (
+                {filteredBonds.map((bond: Bond) => (
                     <tr
                         key={bond.id}
                         onClick={() => router.push(`/emisor/bond/${bond.id}`)}

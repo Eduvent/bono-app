@@ -273,9 +273,9 @@ export default function CreateBondWizard() {
             {/* Form Content */}
             <div className="px-6 pb-6">
               {/* ✅ COMPONENTES CORREGIDOS */}
-              {currentStep === 1 && <Step1Dynamic bondData={bondData} saveData={saveData} />}
-              {currentStep === 2 && <Step2Dynamic bondData={bondData} saveData={saveData} />}
-              {currentStep === 3 && <Step3Dynamic bondData={bondData} saveData={saveData} />}
+              {currentStep === 1 && <Step1Dynamic bondData={bondData} saveDataAction={saveData} />}
+              {currentStep === 2 && <Step2Dynamic bondData={bondData} saveDataAction={saveData} />}
+              {currentStep === 3 && <Step3Dynamic bondData={bondData} saveDataAction={saveData} />}
               {currentStep === 4 && <Step4Dynamic bondData={bondData} bondId={createdBondId} />}
 
               {/* Navigation Buttons */}

@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'No autorizado - Token requerido' }, { status: 401 });
         }
 
-        const payload = verifyToken(token);
+        const payload = await verifyToken(token);
         if (!payload || !payload.userId) {
             console.log('❌ Token inválido o sin userId');
             return NextResponse.json({ error: 'No autorizado - Token inválido' }, { status: 401 });

@@ -9,7 +9,7 @@ export async function PUT(
 ) {
     try {
         const { bondId } = await params;
-        const { status, publishedAt } = await request.json();
+        const { status } = await request.json();
 
         const validStatuses = ['DRAFT', 'ACTIVE', 'PAUSED', 'COMPLETED'];
         if (!validStatuses.includes(status)) {
@@ -23,7 +23,7 @@ export async function PUT(
             where: { id: bondId },
             data: {
                 status,
-                publishedAt: status === 'ACTIVE' ? new Date() : null,
+                ...(status === 'ACTIVE' ? { publishedAt: new Date() } : {})
             },
         });
 

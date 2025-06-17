@@ -19,11 +19,11 @@ interface BondData {
 
 interface Step1Props {
     bondData: BondData;
-    saveData: (data: any, step: number) => void;
+    saveDataAction: (data: any, step: number) => void;
 }
 
 // ✅ EXPORT POR DEFECTO
-export default function Step1Dynamic({ bondData, saveData }: Step1Props) {
+export default function Step1Dynamic({ bondData, saveDataAction }: Step1Props) {
     const [formData, setFormData] = useState({
         name: bondData.step1?.name || '',
         codigoIsin: bondData.step1?.codigoIsin || '',
@@ -64,7 +64,7 @@ export default function Step1Dynamic({ bondData, saveData }: Step1Props) {
         setErrors(newErrors);
 
         // Guardar datos automáticamente (consistente con Step2 y Step3)
-        saveData(formData, 1);
+        saveDataAction(formData, 1);
     }, [formData]);
 
     const handleChange = (field: string, value: string) => {

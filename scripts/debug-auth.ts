@@ -18,12 +18,12 @@ async function debugAuthentication() {
         const testPayload = { userId: 'test-user-123' };
         console.log('   Payload test:', testPayload);
 
-        const token = signToken(testPayload);
+        const token = await signToken(testPayload);
         console.log('   Token generado:', !!token);
         console.log('   Token length:', token.length);
         console.log('   Token preview:', token.substring(0, 50) + '...');
 
-        const decoded = verifyToken(token);
+        const decoded = await verifyToken(token);
         console.log('   Token decoded:', !!decoded);
         console.log('   UserId recovered:', decoded?.userId);
         console.log('   Match:', decoded?.userId === testPayload.userId ? '✅' : '❌');
@@ -38,7 +38,7 @@ async function debugAuthentication() {
     console.log('3️⃣ Test con token inválido:');
     try {
         const invalidToken = 'invalid.token.here';
-        const result = verifyToken(invalidToken);
+        const result = await verifyToken(invalidToken);
         console.log('   Token inválido result:', result);
         console.log('');
     } catch (error) {
@@ -49,7 +49,7 @@ async function debugAuthentication() {
     // 4. Test de token vacío
     console.log('4️⃣ Test con token vacío:');
     try {
-        const result = verifyToken('');
+        const result = await verifyToken('');
         console.log('   Token vacío result:', result);
         console.log('');
     } catch (error) {

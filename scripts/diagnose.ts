@@ -51,8 +51,8 @@ async function runDiagnosis() {
     console.log('\n3️⃣ Verificando sistema de autenticación...');
     try {
         const testPayload = { userId: 'test-user-id' };
-        const token = signToken(testPayload);
-        const decoded = verifyToken(token);
+        const token = await signToken(testPayload);
+        const decoded = await verifyToken(token);
 
         if (decoded && decoded.userId === testPayload.userId) {
             console.log('✅ Sistema de tokens JWT funcionando');
