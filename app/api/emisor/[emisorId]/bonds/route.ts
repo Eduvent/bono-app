@@ -31,10 +31,10 @@ export async function GET(
 
         const searchParams = new URL(request.url).searchParams;
         const { status, limit, offset, search } = QuerySchema.parse({
-            status: searchParams.get('status'),
-            limit: searchParams.get('limit'),
-            offset: searchParams.get('offset'),
-            search: searchParams.get('search'),
+            status: searchParams.get('status') ?? undefined,
+            limit: searchParams.get('limit') ?? undefined,
+            offset: searchParams.get('offset') ?? undefined,
+            search: searchParams.get('search') ?? undefined,
         });
 
         // 2. Verificar que el emisor existe

@@ -1,4 +1,3 @@
-// app/emisor/create-bond/page.tsx - VERSIÓN FINAL CORREGIDA
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -8,28 +7,16 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
-  PlaneIcon as PaperPlane,
+  RocketIcon,
 } from 'lucide-react';
 
-// Importar componentes dinámicos CORRECTOS
-import { Step1Dynamic } from './components/Step1Dynamic';
-import { Step2Dynamic } from './components/Step2Dynamic';
-import { Step3Dynamic } from './components/Step3Dynamic';
-import { Step4Dynamic } from './components/Step4Dynamic';
+// ✅ IMPORTS CORREGIDOS - usando default imports
+import Step1Dynamic from './components/Step1Dynamic';
+import Step2Dynamic from './components/Step2Dynamic';
+import Step3Dynamic from './components/Step3Dynamic';
+import Step4Dynamic from './components/Step4Dynamic';
 
-// Importar hooks
-import { useAuth } from '@/lib/hooks/useAuth';
-import { useCreateBond } from '@/lib/hooks/useCreateBond';
-
-// Función helper para generar CUID válido (para desarrollo)
-function generateValidCUID(): string {
-  // Generar un CUID básico válido para desarrollo
-  // En producción, esto debería venir del backend de autenticación real
-  const timestamp = Date.now().toString(36);
-  const randomPart = Math.random().toString(36).substring(2, 15);
-  return `cl${timestamp}${randomPart}`.substring(0, 25); // CUIDs tienen ~25 caracteres
-}
-
+// Interfaces de datos
 interface GracePeriodConfig {
   couponNumber: number;
   graceType: 'T' | 'P' | 'S';
@@ -72,50 +59,50 @@ interface BondData {
 
 export default function CreateBondWizard() {
   const router = useRouter();
-  const { user, isLoading: authLoading } = useAuth({
-    requireRole: 'EMISOR',
-    redirectTo: '/auth/login'
-  });
-
   const [currentStep, setCurrentStep] = useState(1);
   const [bondData, setBondData] = useState<BondData>({});
   const [createdBondId, setCreatedBondId] = useState<string | null>(null);
-
-  // Hook para crear bono con manejo de errores mejorado
-  const { createBond, isCreating, error: createError } = useCreateBond({
-    onSuccess: (bondId) => {
-      console.log('✅ Bono creado con ID:', bondId);
-      setCreatedBondId(bondId);
-      setCurrentStep(4); // Avanzar al Step 4
-    },
-    onError: (error) => {
-      console.error('❌ Error creando bono:', error);
-      alert(`Error al crear el bono: ${error}`);
-    },
-  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [emisorProfile, setEmisorProfile] = useState<any>(null);
 
   useEffect(() => {
-    if (authLoading) return;
-    if (!user) return;
+    const userRole = localStorage.getItem("userRole")
+    if (userRole !== "emisor") {
+      router.push("/auth/login")
+      return
+    }
 
+    // Obtener perfil del emisor
+    const profileStr = localStorage.getItem("emisorProfile")
+    if (profileStr) {
+      setEmisorProfile(JSON.parse(profileStr))
+    }
+
+    // Cargar datos guardados
     const savedData = localStorage.getItem('bondWizardData');
     if (savedData) {
       try {
-        const parsed = JSON.parse(savedData);
-        setBondData(parsed);
+        setBondData(JSON.parse(savedData));
       } catch (error) {
         console.warn('Error parsing saved wizard data:', error);
       }
     }
-  }, [user, authLoading]);
+  }, [router]);
 
+  // Función para guardar datos localmente
   const saveData = (stepData: any, step: number) => {
     const newData = { ...bondData, [`step${step}`]: stepData };
     setBondData(newData);
     localStorage.setItem('bondWizardData', JSON.stringify(newData));
   };
 
-  const getProgressPercentage = () => (currentStep / 4) * 100;
+  // Función para obtener el emisor ID del usuario actual
+  const getUserEmisorId = (): string => {
+    if (emisorProfile?.id) {
+      return emisorProfile.id;
+    }
+    throw new Error('Perfil de emisor no encontrado. No se puede crear el bono.');
+  };
 
   const canProceedToNext = () => {
     switch (currentStep) {
@@ -125,17 +112,13 @@ export default function CreateBondWizard() {
         return bondData.step2?.tasaAnual && bondData.step2?.primaVencimiento && bondData.step2?.impuestoRenta;
       case 3:
         return bondData.step3?.estructuracionEmisor;
-      case 4:
-        return !!createdBondId;
       default:
-        return false;
+        return true;
     }
   };
 
   const handleNext = () => {
-    if (currentStep === 3 && canProceedToNext()) {
-      handleCreateBond(); // Crear bono al pasar del Step 3 al 4
-    } else if (canProceedToNext() && currentStep < 4) {
+    if (canProceedToNext() && currentStep < 4) {
       setCurrentStep(currentStep + 1);
     }
   };
@@ -146,41 +129,40 @@ export default function CreateBondWizard() {
     }
   };
 
-  const handleCreateBond = async () => {
-    if (!user?.emisorProfile?.id) return;
+  const handleSubmit = async () => {
+    if (currentStep !== 4) {
+      console.log('❌ Submit solo es válido en el paso 4');
+      return;
+    }
+
+    setIsSubmitting(true);
 
     try {
-      // Generar un emisorId válido para desarrollo
-      const validEmisorId = user.emisorProfile.id === 'local-emisor'
-          ? generateValidCUID()
-          : user.emisorProfile.id;
+      console.log('🚀 Creando bono...');
 
-      console.log('📤 Creando bono con emisorId:', validEmisorId);
-
-      // Preparar payload con mapeo correcto de campos
-      const bondPayload = {
-        // Step 1: Datos básicos
-        name: bondData.step1?.name,
+      const completeData = {
+        // Step 1 data
+        name: bondData.step1?.name || '',
         codigoIsin: bondData.step1?.codigoIsin || '',
         valorNominal: parseFloat(bondData.step1?.valorNominal || '0'),
         valorComercial: parseFloat(bondData.step1?.valorComercial || '0'),
-        numAnios: parseInt(bondData.step1?.numAnios || '1'),
-        fechaEmision: bondData.step1?.fechaEmision,
-        frecuenciaCupon: bondData.step1?.frecuenciaCupon,
+        numAnios: parseInt(bondData.step1?.numAnios || '5'),
+        fechaEmision: bondData.step1?.fechaEmision || new Date().toISOString().split('T')[0],
+        frecuenciaCupon: bondData.step1?.frecuenciaCupon || 'semestral',
         diasPorAno: parseInt(bondData.step1?.diasPorAno || '360'),
 
-        // Step 2: Condiciones financieras
-        tipoTasa: bondData.step2?.tipoTasa,
-        periodicidadCapitalizacion: bondData.step2?.periodicidadCapitalizacion,
-        tasaAnual: parseFloat(bondData.step2?.tasaAnual || '0') / 100, // Convertir a decimal
+        // Step 2 data
+        tipoTasa: bondData.step2?.tipoTasa || 'efectiva',
+        periodicidadCapitalizacion: bondData.step2?.periodicidadCapitalizacion || 'semestral',
+        tasaAnual: parseFloat(bondData.step2?.tasaAnual || '0') / 100,
         tasaDescuento: parseFloat(bondData.step2?.tasaAnual || '0') / 100,
-        inflacionSerie: bondData.step2?.indexadoInflacion
-            ? Array(parseInt(bondData.step1?.numAnios || '1')).fill(parseFloat(bondData.step2?.inflacionAnual || '0') / 100)
-            : Array(parseInt(bondData.step1?.numAnios || '1')).fill(0),
         primaPorcentaje: parseFloat(bondData.step2?.primaVencimiento || '0') / 100,
         impuestoRenta: parseFloat(bondData.step2?.impuestoRenta || '30') / 100,
+        inflacionSerie: bondData.step2?.indexadoInflacion
+            ? Array(parseInt(bondData.step1?.numAnios || '5')).fill(parseFloat(bondData.step2?.inflacionAnual || '0') / 100)
+            : [],
 
-        // Step 3: Costes (mapeo correcto)
+        // Step 3 data
         estructuracionPorcentaje: parseFloat(bondData.step3?.estructuracionEmisor || '0') / 100,
         colocacionPorcentaje: parseFloat(bondData.step3?.colocacionEmisor || '0') / 100,
         flotacionPorcentaje: parseFloat(bondData.step3?.flotacionEmisor || '0') / 100,
@@ -189,32 +171,40 @@ export default function CreateBondWizard() {
         // Períodos de gracia
         graciaSerie: bondData.step2?.gracePeriodsConfig?.map(config => config.graceType) || [],
 
-        // Emisor ID válido
-        emisorId: validEmisorId,
+        // Emisor ID
+        emisorId: getUserEmisorId(),
       };
 
-      console.log('📤 Payload final:', bondPayload);
-      await createBond(bondPayload);
-    } catch (error) {
-      console.error('❌ Error al crear el bono:', error);
+      console.log('📤 Enviando datos completos:', completeData);
+
+      const response = await fetch('/api/bonds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(completeData),
+        credentials: 'include'
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Error al crear el bono');
+      }
+
+      console.log('✅ Bono creado exitosamente:', result.bondId);
+      setCreatedBondId(result.bondId);
+
+      // Limpiar datos del wizard
+      localStorage.removeItem('bondWizardData');
+
+    } catch (error: any) {
+      console.error('❌ Error en handleSubmit:', error);
+      alert('Error creando el bono: ' + error.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleFinalSubmit = () => {
-    localStorage.removeItem('bondWizardData');
-    router.push(`/emisor/bond/${createdBondId}?created=true`);
-  };
-
-  if (authLoading) {
-    return (
-        <div className="min-h-screen bg-[#0D0D0D] flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#39FF14] mx-auto"></div>
-            <p className="text-white mt-4">Cargando...</p>
-          </div>
-        </div>
-    );
-  }
+  const getProgressPercentage = () => (currentStep / 4) * 100;
 
   return (
       <div className="min-h-screen bg-[#0D0D0D] text-white font-inter">
@@ -226,7 +216,7 @@ export default function CreateBondWizard() {
               <span className="text-white text-xl font-semibold">BonoApp</span>
             </div>
             <button
-                onClick={() => router.push('/emisor/dashboard')}
+                onClick={() => router.push("/emisor/dashboard")}
                 className="text-gray-400 hover:text-white transition flex items-center"
             >
               <ArrowLeft className="mr-1" size={16} />
@@ -264,96 +254,85 @@ export default function CreateBondWizard() {
                       <div
                           className={`w-6 h-6 rounded-full text-xs flex items-center justify-center font-bold mb-2 ${
                               step < currentStep
-                                  ? 'bg-[#39FF14] text-black'
+                                  ? "bg-[#39FF14] text-black"
                                   : step === currentStep
-                                      ? 'bg-[#39FF14] text-black'
-                                      : 'bg-[#2A2A2A] text-gray-500'
+                                      ? "bg-[#39FF14] text-black"
+                                      : "bg-[#2A2A2A] text-gray-500"
                           }`}
                       >
                         {step < currentStep ? <Check size={12} /> : step}
                       </div>
-                      <span className={`text-xs font-medium ${step <= currentStep ? 'text-[#39FF14]' : 'text-gray-500'}`}>
-                                        {['Datos', 'Finanzas', 'Costes', 'Revisión'][step - 1]}
-                                    </span>
+                      <span className={`text-xs font-medium ${step <= currentStep ? "text-[#39FF14]" : "text-gray-500"}`}>
+                      {["Datos", "Finanzas", "Costes", "Revisión"][step - 1]}
+                    </span>
                     </div>
                 ))}
               </div>
             </div>
 
-            {/* Form Content - USAR COMPONENTES DINÁMICOS */}
+            {/* Form Content */}
             <div className="px-6 pb-6">
+              {/* ✅ COMPONENTES CORREGIDOS */}
               {currentStep === 1 && <Step1Dynamic bondData={bondData} saveData={saveData} />}
               {currentStep === 2 && <Step2Dynamic bondData={bondData} saveData={saveData} />}
               {currentStep === 3 && <Step3Dynamic bondData={bondData} saveData={saveData} />}
-              {currentStep === 4 && (
-                  <Step4Dynamic
-                      bondData={{
-                        // Mapear correctamente los nombres de campos
-                        step1: bondData.step1 ? {
-                          ...bondData.step1,
-                          nombreInterno: bondData.step1.name // Mapeo para compatibilidad
-                        } : undefined,
-                        step2: bondData.step2,
-                        step3: bondData.step3
-                      }}
-                      bondId={createdBondId || undefined}
-                  />
-              )}
+              {currentStep === 4 && <Step4Dynamic bondData={bondData} bondId={createdBondId} />}
 
               {/* Navigation Buttons */}
               <div className="flex justify-between mt-10">
                 <button
-                    onClick={currentStep === 1 ? () => router.push('/emisor/dashboard') : handlePrevious}
+                    onClick={currentStep === 1 ? () => router.push("/emisor/dashboard") : handlePrevious}
                     className="px-6 py-3 border border-[#2A2A2A] rounded-lg text-gray-300 hover:bg-[#1A1A1A] transition flex items-center"
-                    disabled={isCreating}
+                    disabled={isSubmitting}
                 >
                   <ArrowLeft className="mr-2" size={16} />
-                  {currentStep === 1 ? 'Cancelar' : 'Anterior'}
+                  {currentStep === 1 ? "Cancelar" : "Anterior"}
                 </button>
 
-                {currentStep < 3 ? (
+                {currentStep < 4 ? (
                     <button
                         onClick={handleNext}
                         disabled={!canProceedToNext()}
                         className={`px-6 py-3 rounded-lg font-medium transition flex items-center ${
                             canProceedToNext()
-                                ? 'bg-[#39FF14] text-black hover:shadow-[0_0_8px_rgba(57,255,20,0.47)]'
-                                : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                                ? "bg-[#39FF14] text-black hover:shadow-[0_0_8px_rgba(57,255,20,0.47)]"
+                                : "bg-gray-600 text-gray-400 cursor-not-allowed"
                         }`}
                     >
-                      Guardar y Continuar
+                      {currentStep === 3 ? "Ir a Revisión" : "Guardar y Continuar"}
                       <ArrowRight className="ml-2" size={16} />
-                    </button>
-                ) : currentStep === 3 ? (
-                    <button
-                        onClick={handleNext}
-                        disabled={!canProceedToNext() || isCreating}
-                        className={`px-6 py-3 rounded-lg font-medium transition flex items-center ${
-                            canProceedToNext() && !isCreating
-                                ? 'bg-[#39FF14] text-black hover:shadow-[0_0_8px_rgba(57,255,20,0.47)]'
-                                : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                        }`}
-                    >
-                      {isCreating ? (
-                          <>
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black mr-2" />
-                            Creando Bono...
-                          </>
-                      ) : (
-                          <>
-                            Crear Bono
-                            <ArrowRight className="ml-2" size={16} />
-                          </>
-                      )}
                     </button>
                 ) : (
-                    <button
-                        onClick={handleFinalSubmit}
-                        className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition flex items-center"
-                    >
-                      Ir al Dashboard
-                      <ArrowRight className="ml-2" size={16} />
-                    </button>
+                    // Lógica para el paso 4
+                    createdBondId ? (
+                        // Si ya se creó el bono, mostrar botón para ir al dashboard
+                        <button
+                            onClick={() => router.push("/emisor/dashboard")}
+                            className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition flex items-center"
+                        >
+                          Ir al Dashboard
+                          <ArrowRight className="ml-2" size={16} />
+                        </button>
+                    ) : (
+                        // Si no se ha creado, mostrar botón para crear
+                        <button
+                            onClick={handleSubmit}
+                            disabled={isSubmitting}
+                            className="px-6 py-3 rounded-lg font-medium transition flex items-center bg-green-500 text-white hover:bg-green-600 disabled:bg-gray-600"
+                        >
+                          {isSubmitting ? (
+                              <>
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                                Creando Bono...
+                              </>
+                          ) : (
+                              <>
+                                Confirmar y Crear Bono
+                                <RocketIcon className="ml-2" size={16} />
+                              </>
+                          )}
+                        </button>
+                    )
                 )}
               </div>
             </div>

@@ -1,4 +1,4 @@
-// app/emisor/create-bond/components/Step3Dynamic.tsx - DISEÑO ORIGINAL CORREGIDO
+// app/emisor/create-bond/components/Step3Dynamic.tsx - CORREGIDO
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -27,7 +27,8 @@ interface Step3Props {
     saveData: (data: any, step: number) => void;
 }
 
-export function Step3Dynamic({ bondData, saveData }: Step3Props) {
+// ✅ EXPORT POR DEFECTO
+export default function Step3Dynamic({ bondData, saveData }: Step3Props) {
     const [formData, setFormData] = useState({
         estructuracionEmisor: bondData.step3?.estructuracionEmisor || "1.00",
         colocacionEmisor: bondData.step3?.colocacionEmisor || "0.25",
@@ -35,6 +36,7 @@ export function Step3Dynamic({ bondData, saveData }: Step3Props) {
         cavaliEmisor: bondData.step3?.cavaliEmisor || "0.25",
     });
 
+    // Obtener valor comercial del step1 (maneja ambos nombres de campo)
     const valorComercial = parseFloat(bondData.step1?.valorComercial || "0");
 
     const calculateCosts = () => {

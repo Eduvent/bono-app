@@ -1,4 +1,4 @@
-// app/emisor/create-bond/components/Step1Dynamic.tsx - CORREGIDO
+// app/emisor/create-bond/components/Step1Dynamic.tsx - EXPORT CORREGIDO
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -22,7 +22,8 @@ interface Step1Props {
     saveData: (data: any, step: number) => void;
 }
 
-export function Step1Dynamic({ bondData, saveData }: Step1Props) {
+// ✅ EXPORT POR DEFECTO
+export default function Step1Dynamic({ bondData, saveData }: Step1Props) {
     const [formData, setFormData] = useState({
         name: bondData.step1?.name || '',
         codigoIsin: bondData.step1?.codigoIsin || '',
@@ -64,7 +65,7 @@ export function Step1Dynamic({ bondData, saveData }: Step1Props) {
 
         // Guardar datos automáticamente (consistente con Step2 y Step3)
         saveData(formData, 1);
-    }, [formData]);
+    }, [formData, saveData]);
 
     const handleChange = (field: string, value: string) => {
         setFormData(prev => ({ ...prev, [field]: value }));

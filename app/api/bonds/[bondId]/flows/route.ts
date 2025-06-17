@@ -43,11 +43,11 @@ export async function GET(
 
         const searchParams = new URL(request.url).searchParams;
         const { role, period_from, period_to, format, auto_calculate } = QuerySchema.parse({
-            role: searchParams.get('role'),
-            period_from: searchParams.get('period_from'),
-            period_to: searchParams.get('period_to'),
-            format: searchParams.get('format'),
-            auto_calculate: searchParams.get('auto_calculate'),
+            role: searchParams.get('role') ?? undefined,
+            period_from: searchParams.get('period_from') ?? undefined,
+            period_to: searchParams.get('period_to') ?? undefined,
+            format: searchParams.get('format') ?? undefined,
+            auto_calculate: searchParams.get('auto_calculate') ?? undefined,
         });
 
         // 2. Verificar que el bono existe

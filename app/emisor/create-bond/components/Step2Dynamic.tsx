@@ -1,4 +1,4 @@
-// app/emisor/create-bond/components/Step2Dynamic.tsx
+// app/emisor/create-bond/components/Step2Dynamic.tsx - EXPORT CORREGIDO
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -6,14 +6,16 @@ import { Info, Percent, ChevronDown } from 'lucide-react';
 
 interface BondData {
     step1?: {
-        nombreInterno: string;
-        codigoISIN: string;
-        valorNominal: string;
-        valorComercial: string;
-        numAnios: string;
-        fechaEmision: string;
-        frecuenciaCupon: string;
-        baseDias: string;
+        name?: string;
+        nombreInterno?: string;
+        codigoISIN?: string;
+        valorNominal?: string;
+        valorComercial?: string;
+        numAnios?: string;
+        fechaEmision?: string;
+        frecuenciaCupon?: string;
+        baseDias?: string;
+        diasPorAno?: string;
     };
     step2?: {
         tipoTasa: string;
@@ -38,7 +40,8 @@ interface Step2Props {
     saveData: (data: any, step: number) => void;
 }
 
-export function Step2Dynamic({ bondData, saveData }: Step2Props) {
+// ✅ EXPORT POR DEFECTO
+export default function Step2Dynamic({ bondData, saveData }: Step2Props) {
     const [formData, setFormData] = useState({
         tipoTasa: bondData.step2?.tipoTasa || 'efectiva',
         periodicidadCapitalizacion: bondData.step2?.periodicidadCapitalizacion || 'semestral',
@@ -58,7 +61,7 @@ export function Step2Dynamic({ bondData, saveData }: Step2Props) {
     // Calculate total coupons based on Step 1 data
     useEffect(() => {
         if (bondData.step1) {
-            const years = parseInt(bondData.step1.numAnios) || 1;
+            const years = parseInt(bondData.step1.numAnios || bondData.step1.numAnios || '5');
             const frequency = bondData.step1.frecuenciaCupon || 'anual';
 
             const frequencyMap: Record<string, number> = {

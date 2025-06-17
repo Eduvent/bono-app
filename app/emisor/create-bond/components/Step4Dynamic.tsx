@@ -1,4 +1,4 @@
-// app/emisor/create-bond/components/Step4Dynamic.tsx - DISEÑO ORIGINAL CORREGIDO
+// app/emisor/create-bond/components/Step4Dynamic.tsx - CORREGIDO
 'use client';
 
 import { useState } from 'react';
@@ -36,23 +36,14 @@ interface BondData {
 
 interface Step4Props {
     bondData: BondData;
-    flowsCalculated: boolean;
-    setFlowsCalculated: (value: boolean) => void;
-    confirmationChecked: boolean;
-    setConfirmationChecked: (value: boolean) => void;
-    activeTab: string;
-    setActiveTab: (tab: string) => void;
+    bondId?: string | null; // ID del bono creado (opcional)
 }
 
-export function Step4Dynamic({
-                                 bondData,
-                                 flowsCalculated,
-                                 setFlowsCalculated,
-                                 confirmationChecked,
-                                 setConfirmationChecked,
-                                 activeTab,
-                                 setActiveTab,
-                             }: Step4Props) {
+// ✅ EXPORT POR DEFECTO
+export default function Step4Dynamic({ bondData, bondId }: Step4Props) {
+    const [flowsCalculated, setFlowsCalculated] = useState(false);
+    const [confirmationChecked, setConfirmationChecked] = useState(false);
+    const [activeTab, setActiveTab] = useState("summary");
     const [isCalculating, setIsCalculating] = useState(false);
     const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
         datos: true,
@@ -83,7 +74,17 @@ export function Step4Dynamic({
 
     return (
         <div>
-            <h2 className="text-xl font-semibold mb-6">Revisión y Publicación</h2>
+            <h2 className="text-xl font-semibold mb-6">Revisión y Confirmación</h2>
+
+            {/* Mensaje si el bono ya fue creado */}
+            {bondId && (
+                <div className="mb-6 p-4 bg-green-900/20 border border-green-500/30 rounded-lg">
+                    <h3 className="text-green-400 font-medium mb-2">✅ Bono Creado Exitosamente</h3>
+                    <p className="text-green-300 text-sm">
+                        El bono "{getBondName()}" ha sido creado con ID: {bondId}
+                    </p>
+                </div>
+            )}
 
             {/* Review Accordion */}
             <div className="mb-8">
@@ -105,7 +106,7 @@ export function Step4Dynamic({
                                 </div>
                                 <div>
                                     <p className="text-gray-400 text-sm mb-1">Código ISIN</p>
-                                    <p className="font-medium">{bondData.step1?.codigoIsin || "N/A"}</p>
+                                    <p className="font-medium">{bondData.step1?.codigoIsin || "Se generará automáticamente"}</p>
                                 </div>
                                 <div>
                                     <p className="text-gray-400 text-sm mb-1">Valor Nominal</p>
@@ -134,7 +135,7 @@ export function Step4Dynamic({
                         className="flex items-center justify-between p-4 cursor-pointer"
                         onClick={() => toggleSection("condiciones")}
                     >
-                        <h3 className="text-lg font-medium">Condiciones</h3>
+                        <h3 className="text-lg font-medium">Condiciones Financieras</h3>
                         <ChevronDown
                             className={`text-gray-400 transition-transform ${expandedSections.condiciones ? "rotate-180" : ""}`}
                             size={16}
@@ -159,6 +160,10 @@ export function Step4Dynamic({
                                     <p className="text-gray-400 text-sm mb-1">Prima al Vencimiento</p>
                                     <p className="font-medium">{bondData.step2?.primaVencimiento || "0"}%</p>
                                 </div>
+                                <div>
+                                    <p className="text-gray-400 text-sm mb-1">Impuesto a la Renta</p>
+                                    <p className="font-medium">{bondData.step2?.impuestoRenta || "0"}%</p>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -167,7 +172,7 @@ export function Step4Dynamic({
                 {/* Costes */}
                 <div className="border border-[#2A2A2A] rounded-lg mb-4 overflow-hidden">
                     <div className="flex items-center justify-between p-4 cursor-pointer" onClick={() => toggleSection("costes")}>
-                        <h3 className="text-lg font-medium">Costes</h3>
+                        <h3 className="text-lg font-medium">Costes Iniciales</h3>
                         <ChevronDown
                             className={`text-gray-400 transition-transform ${expandedSections.costes ? "rotate-180" : ""}`}
                             size={16}
@@ -190,178 +195,187 @@ export function Step4Dynamic({
                 </div>
             </div>
 
-            {/* Calculate Flows Section */}
-            <div className="mb-8">
-                <button
-                    onClick={handleCalculateFlows}
-                    disabled={isCalculating || flowsCalculated}
-                    className={`w-full py-3 border rounded-lg transition flex items-center justify-center mb-6 ${
-                        flowsCalculated
-                            ? "bg-[#1A3A1A] border-[#39FF14] text-[#39FF14]"
-                            : "bg-[#1E1E1E] border-[#2A2A2A] hover:bg-[#252525]"
-                    }`}
-                >
-                    {isCalculating ? (
-                        <>
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                            Calculando...
-                        </>
-                    ) : flowsCalculated ? (
-                        <>
-                            <CheckCircle className="mr-2" size={16} />
-                            Flujos Calculados
-                        </>
-                    ) : (
-                        <>
-                            <Calculator className="mr-2" size={16} />
-                            Calcular Flujos
-                        </>
-                    )}
-                </button>
+            {/* Calculate Flows Section - Solo si el bono aún no se ha creado */}
+            {!bondId && (
+                <div className="mb-8">
+                    <button
+                        onClick={handleCalculateFlows}
+                        disabled={isCalculating || flowsCalculated}
+                        className={`w-full py-3 border rounded-lg transition flex items-center justify-center mb-6 ${
+                            flowsCalculated
+                                ? "bg-[#1A3A1A] border-[#39FF14] text-[#39FF14]"
+                                : "bg-[#1E1E1E] border-[#2A2A2A] hover:bg-[#252525]"
+                        }`}
+                    >
+                        {isCalculating ? (
+                            <>
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                                Calculando...
+                            </>
+                        ) : flowsCalculated ? (
+                            <>
+                                <CheckCircle className="mr-2" size={16} />
+                                Flujos Calculados
+                            </>
+                        ) : (
+                            <>
+                                <Calculator className="mr-2" size={16} />
+                                Calcular Flujos (Simulación)
+                            </>
+                        )}
+                    </button>
 
-                {flowsCalculated && (
-                    <div>
-                        {/* Tabs */}
-                        <div className="mb-6 border-b border-[#2A2A2A] flex">
-                            {[
-                                { id: "summary", label: "Resumen" },
-                                { id: "flows", label: "Flujos" },
-                                { id: "analytics", label: "Analytics" },
-                            ].map((tab) => (
-                                <button
-                                    key={tab.id}
-                                    onClick={() => setActiveTab(tab.id)}
-                                    className={`py-3 px-6 text-sm font-medium border-b-2 transition ${
-                                        activeTab === tab.id
-                                            ? "text-[#39FF14] border-[#39FF14]"
-                                            : "text-gray-400 border-transparent hover:text-white hover:border-[#39FF14]"
-                                    }`}
-                                >
-                                    {tab.label}
-                                </button>
-                            ))}
+                    {flowsCalculated && (
+                        <div>
+                            {/* Tabs */}
+                            <div className="mb-6 border-b border-[#2A2A2A] flex">
+                                {[
+                                    { id: "summary", label: "Resumen" },
+                                    { id: "flows", label: "Flujos" },
+                                    { id: "analytics", label: "Analytics" },
+                                ].map((tab) => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setActiveTab(tab.id)}
+                                        className={`py-3 px-6 text-sm font-medium border-b-2 transition ${
+                                            activeTab === tab.id
+                                                ? "text-[#39FF14] border-[#39FF14]"
+                                                : "text-gray-400 border-transparent hover:text-white hover:border-[#39FF14]"
+                                        }`}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Tab Content */}
+                            {activeTab === "summary" && (
+                                <div>
+                                    <p className="text-lg font-semibold mb-4">Resumen de Indicadores Clave (Emisor)</p>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        <div className="bg-[#1E1E1E] rounded-lg px-6 py-4">
+                                            <p className="text-gray-400 text-xs mb-1">Precio Neto Recibido Emisor</p>
+                                            <p className="text-[#39FF14] font-medium text-lg">1,026.90</p>
+                                        </div>
+                                        <div className="bg-[#1E1E1E] rounded-lg px-6 py-4">
+                                            <p className="text-gray-400 text-xs mb-1">Costes Iniciales Totales (Emisor)</p>
+                                            <p className="text-[#39FF14] font-medium text-lg">23.10</p>
+                                        </div>
+                                        <div className="bg-[#1E1E1E] rounded-lg px-6 py-4">
+                                            <p className="text-gray-400 text-xs mb-1">Duración</p>
+                                            <p className="text-[#39FF14] font-medium text-lg">4.45 años</p>
+                                        </div>
+                                        <div className="bg-[#1E1E1E] rounded-lg px-6 py-4">
+                                            <p className="text-gray-400 text-xs mb-1">TCEA Emisor (bruta)</p>
+                                            <p className="text-[#39FF14] font-medium text-lg">18.176%</p>
+                                        </div>
+                                        <div className="bg-[#1E1E1E] rounded-lg px-6 py-4">
+                                            <p className="text-gray-400 text-xs mb-1">TCEA Emisor (c/Escudo)</p>
+                                            <p className="text-[#39FF14] font-medium text-lg">15.556%</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === "flows" && (
+                                <div>
+                                    <p className="text-lg font-semibold mb-4">Flujo de Caja Proyectado (Emisor)</p>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full border-collapse min-w-[800px]">
+                                            <thead>
+                                            <tr className="bg-[#1A1A1A] text-gray-400 text-xs">
+                                                <th className="py-2 px-3 text-center font-medium">Nº</th>
+                                                <th className="py-2 px-3 text-left font-medium">Fecha</th>
+                                                <th className="py-2 px-3 text-right font-medium">Cupón (Int.)</th>
+                                                <th className="py-2 px-3 text-right font-medium">Amort.</th>
+                                                <th className="py-2 px-3 text-right font-medium">Flujo Emisor</th>
+                                            </tr>
+                                            </thead>
+                                            <tbody className="text-sm">
+                                            <tr className="border-b border-[#2A2A2A] hover:bg-[#1E1E1E]">
+                                                <td className="py-2 px-3 text-center">0</td>
+                                                <td className="py-2 px-3 text-left">01/06/2025</td>
+                                                <td className="py-2 px-3 text-right">-</td>
+                                                <td className="py-2 px-3 text-right">-</td>
+                                                <td className="py-2 px-3 text-right text-green-500">+1,026.90</td>
+                                            </tr>
+                                            <tr className="border-b border-[#2A2A2A] hover:bg-[#1E1E1E]">
+                                                <td className="py-2 px-3 text-center">1</td>
+                                                <td className="py-2 px-3 text-left">28/11/2025</td>
+                                                <td className="py-2 px-3 text-right text-red-500">(41.15)</td>
+                                                <td className="py-2 px-3 text-right">0.00</td>
+                                                <td className="py-2 px-3 text-right text-red-500">(41.15)</td>
+                                            </tr>
+                                            <tr className="border-b border-[#2A2A2A] hover:bg-[#1E1E1E]">
+                                                <td className="py-2 px-3 text-center">2</td>
+                                                <td className="py-2 px-3 text-left">27/05/2026</td>
+                                                <td className="py-2 px-3 text-right text-red-500">(43.15)</td>
+                                                <td className="py-2 px-3 text-right">0.00</td>
+                                                <td className="py-2 px-3 text-right text-red-500">(43.15)</td>
+                                            </tr>
+                                            <tr className="hover:bg-[#1E1E1E]">
+                                                <td className="py-2 px-3 text-center">10</td>
+                                                <td className="py-2 px-3 text-left">06/05/2030</td>
+                                                <td className="py-2 px-3 text-right text-red-500">(63.18)</td>
+                                                <td className="py-2 px-3 text-right text-red-500">(1,610.51)</td>
+                                                <td className="py-2 px-3 text-right text-red-500">(1,683.69)</td>
+                                            </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === "analytics" && (
+                                <div>
+                                    <p className="text-lg font-semibold mb-4">Análisis de Rentabilidad y Riesgo (Emisor)</p>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="bg-[#1E1E1E] rounded-lg p-4">
+                                            <p className="text-gray-400 text-sm mb-1">VAN Emisor (c/Escudo)</p>
+                                            <p className="text-[#39FF14] font-medium text-xl">693.37</p>
+                                        </div>
+                                        <div className="bg-[#1E1E1E] rounded-lg p-4">
+                                            <p className="text-gray-400 text-sm mb-1">TIR Emisor (bruta)</p>
+                                            <p className="text-[#39FF14] font-medium text-xl">18.450%</p>
+                                        </div>
+                                        <div className="bg-[#1E1E1E] rounded-lg p-4">
+                                            <p className="text-gray-400 text-sm mb-1">Duración Modificada</p>
+                                            <p className="text-[#39FF14] font-medium text-xl">4.35</p>
+                                        </div>
+                                        <div className="bg-[#1E1E1E] rounded-lg p-4">
+                                            <p className="text-gray-400 text-sm mb-1">Total Ratios Decisión</p>
+                                            <p className="text-[#39FF14] font-medium text-xl">26.84</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
+                    )}
 
-                        {/* Tab Content */}
-                        {activeTab === "summary" && (
-                            <div>
-                                <p className="text-lg font-semibold mb-4">Resumen de Indicadores Clave (Emisor)</p>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    <div className="bg-[#1E1E1E] rounded-lg px-6 py-4">
-                                        <p className="text-gray-400 text-xs mb-1">Precio Neto Recibido Emisor</p>
-                                        <p className="text-[#39FF14] font-medium text-lg">1,026.90</p>
-                                    </div>
-                                    <div className="bg-[#1E1E1E] rounded-lg px-6 py-4">
-                                        <p className="text-gray-400 text-xs mb-1">Costes Iniciales Totales (Emisor)</p>
-                                        <p className="text-[#39FF14] font-medium text-lg">23.10</p>
-                                    </div>
-                                    <div className="bg-[#1E1E1E] rounded-lg px-6 py-4">
-                                        <p className="text-gray-400 text-xs mb-1">Duración</p>
-                                        <p className="text-[#39FF14] font-medium text-lg">4.45 años</p>
-                                    </div>
-                                    <div className="bg-[#1E1E1E] rounded-lg px-6 py-4">
-                                        <p className="text-gray-400 text-xs mb-1">TCEA Emisor (bruta)</p>
-                                        <p className="text-[#39FF14] font-medium text-lg">18.176%</p>
-                                    </div>
-                                    <div className="bg-[#1E1E1E] rounded-lg px-6 py-4">
-                                        <p className="text-gray-400 text-xs mb-1">TCEA Emisor (c/Escudo)</p>
-                                        <p className="text-[#39FF14] font-medium text-lg">15.556%</p>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {activeTab === "flows" && (
-                            <div>
-                                <p className="text-lg font-semibold mb-4">Flujo de Caja Proyectado (Emisor)</p>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full border-collapse min-w-[800px]">
-                                        <thead>
-                                        <tr className="bg-[#1A1A1A] text-gray-400 text-xs">
-                                            <th className="py-2 px-3 text-center font-medium">Nº</th>
-                                            <th className="py-2 px-3 text-left font-medium">Fecha</th>
-                                            <th className="py-2 px-3 text-right font-medium">Cupón (Int.)</th>
-                                            <th className="py-2 px-3 text-right font-medium">Amort.</th>
-                                            <th className="py-2 px-3 text-right font-medium">Flujo Emisor</th>
-                                        </tr>
-                                        </thead>
-                                        <tbody className="text-sm">
-                                        <tr className="border-b border-[#2A2A2A] hover:bg-[#1E1E1E]">
-                                            <td className="py-2 px-3 text-center">0</td>
-                                            <td className="py-2 px-3 text-left">01/06/2025</td>
-                                            <td className="py-2 px-3 text-right">-</td>
-                                            <td className="py-2 px-3 text-right">-</td>
-                                            <td className="py-2 px-3 text-right text-green-500">+1,026.90</td>
-                                        </tr>
-                                        <tr className="border-b border-[#2A2A2A] hover:bg-[#1E1E1E]">
-                                            <td className="py-2 px-3 text-center">1</td>
-                                            <td className="py-2 px-3 text-left">28/11/2025</td>
-                                            <td className="py-2 px-3 text-right text-red-500">(41.15)</td>
-                                            <td className="py-2 px-3 text-right">0.00</td>
-                                            <td className="py-2 px-3 text-right text-red-500">(41.15)</td>
-                                        </tr>
-                                        <tr className="border-b border-[#2A2A2A] hover:bg-[#1E1E1E]">
-                                            <td className="py-2 px-3 text-center">2</td>
-                                            <td className="py-2 px-3 text-left">27/05/2026</td>
-                                            <td className="py-2 px-3 text-right text-red-500">(43.15)</td>
-                                            <td className="py-2 px-3 text-right">0.00</td>
-                                            <td className="py-2 px-3 text-right text-red-500">(43.15)</td>
-                                        </tr>
-                                        <tr className="hover:bg-[#1E1E1E]">
-                                            <td className="py-2 px-3 text-center">10</td>
-                                            <td className="py-2 px-3 text-left">06/05/2030</td>
-                                            <td className="py-2 px-3 text-right text-red-500">(63.18)</td>
-                                            <td className="py-2 px-3 text-right text-red-500">(1,610.51)</td>
-                                            <td className="py-2 px-3 text-right text-red-500">(1,683.69)</td>
-                                        </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-
-                        {activeTab === "analytics" && (
-                            <div>
-                                <p className="text-lg font-semibold mb-4">Análisis de Rentabilidad y Riesgo (Emisor)</p>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="bg-[#1E1E1E] rounded-lg p-4">
-                                        <p className="text-gray-400 text-sm mb-1">VAN Emisor (c/Escudo)</p>
-                                        <p className="text-[#39FF14] font-medium text-xl">693.37</p>
-                                    </div>
-                                    <div className="bg-[#1E1E1E] rounded-lg p-4">
-                                        <p className="text-gray-400 text-sm mb-1">TIR Emisor (bruta)</p>
-                                        <p className="text-[#39FF14] font-medium text-xl">18.450%</p>
-                                    </div>
-                                    <div className="bg-[#1E1E1E] rounded-lg p-4">
-                                        <p className="text-gray-400 text-sm mb-1">Duración Modificada</p>
-                                        <p className="text-[#39FF14] font-medium text-xl">4.35</p>
-                                    </div>
-                                    <div className="bg-[#1E1E1E] rounded-lg p-4">
-                                        <p className="text-gray-400 text-sm mb-1">Total Ratios Decisión</p>
-                                        <p className="text-[#39FF14] font-medium text-xl">26.84</p>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
+                    {/* Confirmation Section */}
+                    <div className="mb-8">
+                        <div className="flex items-start">
+                            <input
+                                type="checkbox"
+                                id="confirmation-checkbox"
+                                checked={confirmationChecked}
+                                onChange={(e) => setConfirmationChecked(e.target.checked)}
+                                className="mt-1 mr-3 h-4 w-4 rounded border-gray-300 text-[#39FF14] focus:ring-[#39FF14] bg-gray-700"
+                            />
+                            <label htmlFor="confirmation-checkbox" className="text-gray-300">
+                                He revisado y acepto todos los datos proporcionados para la emisión del bono. Entiendo que una vez
+                                confirmado, estos datos serán utilizados para crear el bono.
+                            </label>
+                        </div>
                     </div>
-                )}
-            </div>
-
-            {/* Confirmation Section */}
-            <div className="mb-8">
-                <div className="flex items-start">
-                    <input
-                        type="checkbox"
-                        id="confirmation-checkbox"
-                        checked={confirmationChecked}
-                        onChange={(e) => setConfirmationChecked(e.target.checked)}
-                        className="mt-1 mr-3 h-4 w-4 rounded border-gray-300 text-[#39FF14] focus:ring-[#39FF14] bg-gray-700"
-                    />
-                    <label htmlFor="confirmation-checkbox" className="text-gray-300">
-                        He revisado y acepto todos los datos proporcionados para la emisión del bono. Entiendo que una vez
-                        publicado, estos datos no podrán ser modificados.
-                    </label>
                 </div>
+            )}
+
+            {/* Información adicional para depuración */}
+            <div className="mt-8 text-xs text-gray-400">
+                <p>✅ Datos validados correctamente</p>
+                <p>✅ Componentes cargados</p>
+                {bondId && <p>✅ Bono creado: {bondId}</p>}
             </div>
         </div>
     );
