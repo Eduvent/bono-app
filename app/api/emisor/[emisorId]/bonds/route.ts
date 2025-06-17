@@ -97,26 +97,24 @@ export async function GET(
 
         console.log('📊 Bonos encontrados:', bonds.length, 'de', totalCount);
 
-        // 5. Formatear respuesta
+        // 5. Formatear respuesta sin contenedor "data"
         const response = {
             success: true,
-            data: {
-                bonds: bonds.map(bond => ({
-                    ...bond,
-                    valorNominal: bond.valorNominal.toNumber(),
-                    valorComercial: bond.valorComercial.toNumber(),
-                    tasaAnual: bond.tasaAnual.toNumber(),
-                })),
-                pagination: {
-                    total: totalCount,
-                    limit,
-                    offset,
-                    hasMore: offset + limit < totalCount,
-                },
-                emisor: {
-                    id: emisor.id,
-                    companyName: emisor.companyName,
-                },
+            bonds: bonds.map(bond => ({
+                ...bond,
+                valorNominal: bond.valorNominal.toNumber(),
+                valorComercial: bond.valorComercial.toNumber(),
+                tasaAnual: bond.tasaAnual.toNumber(),
+            })),
+            pagination: {
+                total: totalCount,
+                limit,
+                offset,
+                hasMore: offset + limit < totalCount,
+            },
+            emisor: {
+                id: emisor.id,
+                companyName: emisor.companyName,
             },
         };
 
