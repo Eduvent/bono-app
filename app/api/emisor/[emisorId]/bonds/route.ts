@@ -20,11 +20,14 @@ const QuerySchema = z.object({
 
 export async function GET(
     request: NextRequest,
-    { params }: { params: { emisorId: string } }
+    { params }: { params: Promise<{ emisorId: string }> } // ← FIX: params es Promise en Next.js 15
 ) {
     try {
-        // 1. Validar parámetros
-        const { emisorId } = ParamsSchema.parse(params);
+        // 1. Await params (Next.js 15 cambio)
+        const resolvedParams = await params;
+        const { emisorId } = ParamsSchema.parse(resolvedParams);
+
+        console.log('🔍 Obteniendo bonos para emisor:', emisorId);
 
         const searchParams = new URL(request.url).searchParams;
         const { status, limit, offset, search } = QuerySchema.parse({
@@ -41,11 +44,14 @@ export async function GET(
         });
 
         if (!emisor) {
+            console.log('❌ Emisor no encontrado:', emisorId);
             return NextResponse.json(
                 { error: 'Emisor no encontrado', code: 'EMISOR_NOT_FOUND' },
                 { status: 404 }
             );
         }
+
+        console.log('✅ Emisor encontrado:', emisor.companyName);
 
         // 3. Construir filtros de búsqueda
         const whereClause: any = {
@@ -63,188 +69,74 @@ export async function GET(
             ];
         }
 
-        // 4. Obtener bonos con información relacionada
+        // 4. Obtener bonos con paginación
         const [bonds, totalCount] = await Promise.all([
             prisma.bond.findMany({
                 where: whereClause,
-                skip: offset,
-                take: limit,
-                orderBy: { createdAt: 'desc' },
-                include: {
-                    costs: {
-                        select: {
-                            estructuracionPorcentaje: true,
-                            colocacionPorcentaje: true,
-                            flotacionPorcentaje: true,
-                            cavaliPorcentaje: true,
-                        },
-                    },
-                    metrics: {
-                        select: {
-                            tceaEmisor: true,
-                            treaBonista: true,
-                            van: true,
-                            duracion: true,
-                            duracionModificada: true,
-                        },
-                        orderBy: { createdAt: 'desc' },
-                        take: 1,
-                    },
-                    _count: {
-                        select: {
-                            cashFlows: true,
-                            investments: true,
-                        },
-                    },
+                select: {
+                    id: true,
+                    name: true,
+                    codigoIsin: true,
+                    status: true,
+                    valorNominal: true,
+                    valorComercial: true,
+                    fechaEmision: true,
+                    fechaVencimiento: true,
+                    frecuenciaCupon: true,
+                    tipoTasa: true,
+                    tasaAnual: true,
+                    createdAt: true,
+                    updatedAt: true,
                 },
+                orderBy: { createdAt: 'desc' },
+                take: limit,
+                skip: offset,
             }),
             prisma.bond.count({ where: whereClause }),
         ]);
 
-        // 5. Transformar datos para el frontend
-        const bondsFormatted = bonds.map((bond) => ({
-            id: bond.id,
-            name: bond.name,
-            codigoIsin: bond.codigoIsin,
-            status: bond.status,
-            createdAt: bond.createdAt.toISOString(),
-            updatedAt: bond.updatedAt.toISOString(),
+        console.log('📊 Bonos encontrados:', bonds.length, 'de', totalCount);
 
-            // Valores financieros básicos
-            nominalValue: Number(bond.valorNominal),
-            commercialValue: Number(bond.valorComercial),
-            years: bond.numAnios,
-            couponFrequency: bond.frecuenciaCupon,
-
-            // Métricas financieras (si existen)
-            tceaEmisor: bond.metrics?.[0]?.tceaEmisor ? Number(bond.metrics[0].tceaEmisor) : null,
-            treaBonista: bond.metrics?.[0]?.treaBonista ? Number(bond.metrics[0].treaBonista) : null,
-            van: bond.metrics?.[0]?.van ? Number(bond.metrics[0].van) : null,
-            duracion: bond.metrics?.[0]?.duracion ? Number(bond.metrics[0].duracion) : null,
-
-            // Contadores
-            flowsCount: bond._count.cashFlows,
-            investorsCount: bond._count.investments,
-
-            // Estados derivados
-            hasFlows: bond._count.cashFlows > 0,
-            isPublished: bond.status === 'ACTIVE',
-            hasMetrics: (bond.metrics?.length || 0) > 0,
-        }));
-
-        // 6. Calcular métricas agregadas
-        const metrics = {
-            totalBonds: totalCount,
-            activeBonds: bonds.filter(b => b.status === 'ACTIVE').length,
-            draftBonds: bonds.filter(b => b.status === 'DRAFT').length,
-            pausedBonds: bonds.filter(b => b.status === 'PAUSED').length,
-            completedBonds: bonds.filter(b => b.status === 'COMPLETED').length,
-
-            totalNominalValue: bonds.reduce((sum, b) => sum + Number(b.valorNominal), 0),
-            totalCommercialValue: bonds.reduce((sum, b) => sum + Number(b.valorComercial), 0),
-
-            bondsWithFlows: bonds.filter(b => b._count.cashFlows > 0).length,
-            bondsWithMetrics: bonds.filter(b => (b.metrics?.length || 0) > 0).length,
-
-            // TCEA promedio (solo bonos con métricas)
-            averageTCEA: (() => {
-                const bondsWithTCEA = bonds.filter(b => b.metrics?.[0]?.tceaEmisor);
-                if (bondsWithTCEA.length === 0) return null;
-                return bondsWithTCEA.reduce((sum, b) => sum + Number(b.metrics![0].tceaEmisor!), 0) / bondsWithTCEA.length;
-            })(),
+        // 5. Formatear respuesta
+        const response = {
+            success: true,
+            data: {
+                bonds: bonds.map(bond => ({
+                    ...bond,
+                    valorNominal: bond.valorNominal.toNumber(),
+                    valorComercial: bond.valorComercial.toNumber(),
+                    tasaAnual: bond.tasaAnual.toNumber(),
+                })),
+                pagination: {
+                    total: totalCount,
+                    limit,
+                    offset,
+                    hasMore: offset + limit < totalCount,
+                },
+                emisor: {
+                    id: emisor.id,
+                    companyName: emisor.companyName,
+                },
+            },
         };
 
-        return NextResponse.json({
-            success: true,
-            emisor: {
-                id: emisor.id,
-                companyName: emisor.companyName,
-            },
-            bonds: bondsFormatted,
-            metrics,
-            pagination: {
-                total: totalCount,
-                limit,
-                offset,
-                hasMore: offset + limit < totalCount,
-            },
-        });
+        return NextResponse.json(response);
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('❌ Error obteniendo bonos del emisor:', error);
 
         if (error instanceof z.ZodError) {
-            return NextResponse.json(
-                {
-                    error: 'Parámetros inválidos',
-                    code: 'INVALID_PARAMS',
-                    details: error.errors
-                },
-                { status: 400 }
-            );
+            return NextResponse.json({
+                error: 'Parámetros inválidos',
+                details: error.errors,
+                code: 'VALIDATION_ERROR',
+            }, { status: 400 });
         }
 
-        return NextResponse.json(
-            {
-                error: 'Error interno del servidor',
-                code: 'INTERNAL_ERROR',
-                message: process.env.NODE_ENV === 'development' ? error.message : undefined
-            },
-            { status: 500 }
-        );
-    }
-}
-
-// POST - Crear nuevo bono (redireccionar a API principal)
-export async function POST(
-    request: NextRequest,
-    { params }: { params: { emisorId: string } }
-) {
-    try {
-        const { emisorId } = ParamsSchema.parse(params);
-        const body = await request.json();
-
-        // Agregar emisorId al body y redirigir a la API principal
-        const bondData = { ...body, emisorId };
-
-        // Hacer request interno a la API principal de bonos
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-        const response = await fetch(`${baseUrl}/api/bonds`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(bondData),
-        });
-
-        const result = await response.json();
-
-        if (!response.ok) {
-            return NextResponse.json(result, { status: response.status });
-        }
-
-        return NextResponse.json(result, { status: 201 });
-
-    } catch (error) {
-        console.error('❌ Error creando bono:', error);
-
-        if (error instanceof z.ZodError) {
-            return NextResponse.json(
-                {
-                    error: 'Parámetros inválidos',
-                    code: 'INVALID_PARAMS',
-                    details: error.errors
-                },
-                { status: 400 }
-            );
-        }
-
-        return NextResponse.json(
-            {
-                error: 'Error interno del servidor',
-                code: 'INTERNAL_ERROR'
-            },
-            { status: 500 }
-        );
+        return NextResponse.json({
+            error: 'Error interno del servidor',
+            code: 'INTERNAL_ERROR',
+            message: process.env.NODE_ENV === 'development' ? error.message : undefined,
+        }, { status: 500 });
     }
 }

@@ -1,32 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { PrismaClient } from '../../../../lib/generated/client';
+import { verifyToken } from '@/lib/auth';
+import { z } from 'zod';
 
-// ✅ LOG: Verificar que el archivo se está cargando
-console.log('📁 API Route /api/emisor/profile cargado correctamente');
+console.log('🟢 API Route /api/emisor/profile CARGADO - versión completa');
 
-// Verificar variables de entorno críticas
-console.log('🔧 DATABASE_URL disponible:', !!process.env.DATABASE_URL);
-console.log('🔧 JWT_SECRET disponible:', !!process.env.JWT_SECRET);
-
-let prisma: any;
-let verifyToken: any;
-
-try {
-    // Importar Prisma y auth de forma que podamos capturar errores
-    const { PrismaClient } = require('../../../../lib/generated/client');
-    console.log('✅ PrismaClient importado correctamente');
-
-    prisma = new PrismaClient();
-    console.log('✅ Instancia de Prisma creada');
-
-    const authModule = require('@/lib/auth');
-    verifyToken = authModule.verifyToken;
-    console.log('✅ Módulo auth importado correctamente');
-
-} catch (error) {
-    console.error('❌ Error importando dependencias:', error);
-}
-
-const { z } = require('zod');
+const prisma = new PrismaClient();
 
 const ProfileSchema = z.object({
     companyName: z.string().min(1, "Nombre de empresa es requerido"),
@@ -38,56 +17,34 @@ const ProfileSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-    console.log('🚀 POST /api/emisor/profile iniciado');
-    console.log('📊 Headers:', Object.fromEntries(request.headers.entries()));
+    console.log('🟢 POST /api/emisor/profile EJECUTADO - versión completa');
 
     try {
-        // Verificar que las dependencias están disponibles
-        if (!prisma) {
-            console.error('❌ Prisma no está disponible');
-            return NextResponse.json({ error: 'Error de configuración: Database' }, { status: 500 });
-        }
-
-        if (!verifyToken) {
-            console.error('❌ verifyToken no está disponible');
-            return NextResponse.json({ error: 'Error de configuración: Auth' }, { status: 500 });
-        }
-
-        console.log('✅ Dependencias verificadas');
-
         // 1. Verificar autenticación
         const token = request.cookies.get('token')?.value ||
             request.headers.get('authorization')?.replace('Bearer ', '');
-
-        console.log('🔑 Token encontrado:', !!token);
 
         if (!token) {
             console.log('❌ Token no encontrado');
             return NextResponse.json({ error: 'No autorizado - Token requerido' }, { status: 401 });
         }
 
-        let payload;
-        try {
-            payload = verifyToken(token);
-            console.log('✅ Token verificado, userId:', payload?.userId);
-        } catch (tokenError) {
-            console.error('❌ Error verificando token:', tokenError);
-            return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-        }
-
+        const payload = verifyToken(token);
         if (!payload || !payload.userId) {
-            console.log('❌ Token sin userId válido');
+            console.log('❌ Token inválido o sin userId');
             return NextResponse.json({ error: 'No autorizado - Token inválido' }, { status: 401 });
         }
 
-        // 2. Obtener y validar datos del formulario
+        console.log('✅ Usuario autenticado:', payload.userId);
+
+        // 2. Validar datos del formulario
         const body = await request.json();
         console.log('📥 Datos recibidos:', JSON.stringify(body, null, 2));
 
         const data = ProfileSchema.parse(body);
         console.log('✅ Datos validados correctamente');
 
-        // 3. Verificar conexión a base de datos
+        // 3. Conectar a base de datos
         try {
             await prisma.$connect();
             console.log('✅ Conectado a base de datos');
@@ -96,7 +53,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Error de conexión a base de datos' }, { status: 500 });
         }
 
-        // 4. Verificar que el usuario existe
+        // 4. Verificar que el usuario existe y es emisor
         const user = await prisma.user.findUnique({
             where: { id: payload.userId },
             select: { id: true, email: true, role: true }
@@ -114,18 +71,30 @@ export async function POST(request: NextRequest) {
 
         console.log('✅ Usuario verificado como emisor');
 
-        // 5. Crear o actualizar perfil emisor
+        // 5. Preparar datos para guardar
         const profileData = {
             companyName: data.companyName,
             ruc: data.ruc,
-            industry: data.sector || 'No especificado',
-            address: data.country || 'No especificado',
-            contactPerson: data.companyName,
+            industry: data.sector || null,
+            address: data.country || null,
+            contactPerson: data.companyName, // Usar nombre de empresa como contacto por defecto
             phone: null,
         };
 
-        console.log('💾 Creando perfil con datos:', JSON.stringify(profileData, null, 2));
+        console.log('💾 Datos a guardar:', JSON.stringify(profileData, null, 2));
 
+        // 6. Verificar si ya existe un perfil
+        const existingProfile = await prisma.emisorProfile.findUnique({
+            where: { userId: payload.userId }
+        });
+
+        if (existingProfile) {
+            console.log('📝 Perfil existente encontrado, actualizando...');
+        } else {
+            console.log('➕ Creando nuevo perfil...');
+        }
+
+        // 7. Crear o actualizar perfil emisor
         const profile = await prisma.emisorProfile.upsert({
             where: { userId: payload.userId },
             update: profileData,
@@ -135,8 +104,24 @@ export async function POST(request: NextRequest) {
             },
         });
 
-        console.log('✅ Perfil creado exitosamente:', profile.id);
+        console.log('✅ Perfil guardado exitosamente:');
+        console.log('   - ID:', profile.id);
+        console.log('   - Empresa:', profile.companyName);
+        console.log('   - RUC:', profile.ruc);
+        console.log('   - Usuario ID:', profile.userId);
 
+        // 8. Verificar que se guardó correctamente
+        const savedProfile = await prisma.emisorProfile.findUnique({
+            where: { id: profile.id }
+        });
+
+        if (savedProfile) {
+            console.log('✅ Verificación: Perfil encontrado en BD');
+        } else {
+            console.log('❌ Verificación: Perfil NO encontrado en BD');
+        }
+
+        // 9. Retornar respuesta exitosa
         const responseData = {
             success: true,
             profile: {
@@ -159,13 +144,36 @@ export async function POST(request: NextRequest) {
             console.log('📋 Errores de validación:', error.errors);
             return NextResponse.json({
                 error: 'Datos inválidos',
-                details: error.errors
+                details: error.errors.map(e => ({
+                    field: e.path.join('.'),
+                    message: e.message
+                }))
             }, { status: 400 });
+        }
+
+        // Error de Prisma
+        if (error.code) {
+            console.log('🗄️ Error de Prisma:', error.code, error.message);
+            return NextResponse.json({
+                error: 'Error de base de datos',
+                details: process.env.NODE_ENV === 'development' ? error.message : 'Error interno'
+            }, { status: 500 });
         }
 
         return NextResponse.json({
             error: 'Error interno del servidor',
-            message: error.message
+            message: process.env.NODE_ENV === 'development' ? error.message : 'Error inesperado'
         }, { status: 500 });
+    } finally {
+        await prisma.$disconnect();
     }
+}
+
+// Para debug - endpoint GET
+export async function GET() {
+    console.log('🔍 GET /api/emisor/profile - endpoint de debug');
+    return NextResponse.json({
+        message: 'API endpoint funcionando',
+        timestamp: new Date().toISOString()
+    });
 }
