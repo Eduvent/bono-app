@@ -1,5 +1,4 @@
 // lib/hooks/useCalculations.ts
-
 import { useState, useEffect, useCallback } from 'react';
 import useSWR from 'swr';
 
@@ -101,6 +100,7 @@ export function useCalculations(bondId?: string, options: UseCalculationsOptions
         recalculate?: boolean;
         saveResults?: boolean;
         quickMetrics?: boolean;
+        inputs?: any; // ✅ CORRECCIÓN AQUÍ
     } = {}) => {
         if (!bondId) {
             throw new Error('Bond ID is required for calculations');

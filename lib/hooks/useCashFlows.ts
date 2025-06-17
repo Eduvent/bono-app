@@ -1,5 +1,4 @@
 // lib/hooks/useCashFlows.ts
-
 import { useState, useCallback, useMemo } from 'react';
 import useSWR from 'swr';
 
@@ -8,7 +7,7 @@ import useSWR from 'swr';
  */
 
 // Tipos para flujos del emisor
-interface EmisorCashFlow {
+export interface EmisorCashFlow {
     periodo: number;
     fecha: string;
     inflacionAnual: number | null;
@@ -26,7 +25,7 @@ interface EmisorCashFlow {
 }
 
 // Tipos para flujos del inversionista
-interface InversionistaCashFlow {
+export interface InversionistaCashFlow {
     periodo: number;
     fecha: string;
     inflacionAnual: number | null;
@@ -83,10 +82,19 @@ interface UseCashFlowsOptions {
     format?: 'json' | 'csv';
 }
 
+// ✅ CORRECCIÓN 1: Tipos auxiliares para el genérico
+type Role = 'emisor' | 'inversionista';
+type FlowType<R extends Role> = R extends 'emisor' ? EmisorCashFlow : InversionistaCashFlow;
+
+
 /**
  * Hook principal para obtener flujos de caja
  */
-export function useCashFlows(bondId: string | undefined, options: UseCashFlowsOptions) {
+// ✅ CORRECCIÓN 2: Firma del hook genérica
+export function useCashFlows<R extends Role>(
+    bondId: string | undefined,
+    options: UseCashFlowsOptions & { role: R }
+) {
     const {
         role,
         periodFrom,
@@ -150,10 +158,7 @@ export function useCashFlows(bondId: string | undefined, options: UseCashFlowsOp
                     throw new Error(errorData.error || 'Error recalculando flujos');
                 }
             }
-
-            // Invalidar caché para refrescar datos
             await mutate();
-
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Error refrescando flujos';
             setRefreshError(errorMessage);
@@ -170,9 +175,7 @@ export function useCashFlows(bondId: string | undefined, options: UseCashFlowsOp
         try {
             const response = await fetch(`/api/bonds/${bondId}/flows?role=${role}&format=csv`);
 
-            if (!response.ok) {
-                throw new Error('Error descargando CSV');
-            }
+            if (!response.ok) throw new Error('Error descargando CSV');
 
             const blob = await response.blob();
             const url = URL.createObjectURL(blob);
@@ -190,47 +193,36 @@ export function useCashFlows(bondId: string | undefined, options: UseCashFlowsOp
         }
     }, [bondId, role, data?.bondName]);
 
-    // Flows tipados según el rol
+    // ✅ CORRECCIÓN 3: 'flows' tipado con el genérico
     const flows = useMemo(() => {
-        if (!data?.flows) return [];
-
-        if (role === 'emisor') {
-            return data.flows as EmisorCashFlow[];
-        } else {
-            return data.flows as InversionistaCashFlow[];
-        }
-    }, [data?.flows, role]);
+        if (!data?.flows) return [] as FlowType<R>[];
+        return data.flows as FlowType<R>[];
+    }, [data?.flows]);
 
     return {
         // Datos
         flows,
         summary: data?.summary || null,
         metadata: data?.metadata || null,
-
         // Estado
         isLoading,
         isRefreshing,
         error: error?.message || refreshError,
-
         // Información del bono
         bondId: data?.bondId,
         bondName: data?.bondName,
         bondStatus: data?.bondStatus,
-
         // Filtros aplicados
         filters: data?.filters || { appliedFilters: false },
-
         // Acciones
         refreshFlows,
         downloadCSV,
         mutate,
-
         // Helpers
         hasFlows: flows.length > 0,
         flowsCount: flows.length,
         isEmpty: !isLoading && flows.length === 0,
         isFiltered: data?.filters.appliedFilters || false,
-
         // Funciones de conveniencia
         recalculate: () => refreshFlows(true),
         refresh: () => refreshFlows(false),
