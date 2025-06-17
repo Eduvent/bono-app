@@ -19,8 +19,9 @@ export default function EmisorProfilePage() {
     website: "",
   })
   const [toast, setToast] = useState({ show: false, message: "", type: "success" as "success" | "error" })
+  const [isLoading, setIsLoading] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!formData.companyName || !formData.ruc || !formData.sector || !formData.country) {
@@ -28,16 +29,33 @@ export default function EmisorProfilePage() {
       return
     }
 
-    // Save data to localStorage
-    localStorage.setItem("emisorProfile", JSON.stringify(formData))
+    setIsLoading(true)
+    try {
+      const res = await fetch('/api/emisor/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(formData)
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setToast({ show: true, message: data.error || 'Error al guardar', type: 'error' })
+        setIsLoading(false)
+        return
+      }
 
-    // Show success toast
-    setToast({ show: true, message: "¡Perfil de Emisor configurado! Redirigiendo a tu dashboard...", type: "success" })
+      if (data.profile) {
+        localStorage.setItem('emisorProfile', JSON.stringify(data.profile))
+      }
 
-    // Redirect after delay
-    setTimeout(() => {
-      router.push("/emisor/dashboard")
-    }, 2500)
+      setToast({ show: true, message: '¡Perfil de Emisor configurado! Redirigiendo a tu dashboard...', type: 'success' })
+      setTimeout(() => {
+        router.push('/emisor/dashboard')
+      }, 2000)
+    } catch (error) {
+      setToast({ show: true, message: 'Error al guardar', type: 'error' })
+      setIsLoading(false)
+    }
   }
 
   const handleLogout = () => {
@@ -182,9 +200,10 @@ export default function EmisorProfilePage() {
               <div className="pt-4">
                 <button
                   type="submit"
-                  className="w-full py-3 bg-[#39FF14] text-black font-semibold rounded-lg transition duration-250 hover:shadow-[0_0_15px_rgba(57,255,20,0.5)]"
+                  disabled={isLoading}
+                  className="w-full py-3 bg-[#39FF14] text-black font-semibold rounded-lg transition duration-250 hover:shadow-[0_0_15px_rgba(57,255,20,0.5)] disabled:opacity-50"
                 >
-                  Finalizar Configuración
+                  {isLoading ? 'Guardando...' : 'Finalizar Configuración'}
                 </button>
               </div>
             </form>
