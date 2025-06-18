@@ -79,11 +79,8 @@ export class BondCalculationsService {
 
             await this.validateBondForCalculation(bond);
 
-            // ✅ CORRECCIÓN: Obtener y validar inputs antes de calcular
+            // ✅ SIMPLIFICADO: La auto-reparación se maneja en convertBondToCalculationInputs
             const calculationInputs = await this.convertBondToCalculationInputs(bond);
-
-            // ✅ VALIDACIÓN ADICIONAL: Verificar que las series sean consistentes
-            await this.validateSeriesConsistency(bond.id, calculationInputs);
 
             console.log(`🔄 Calculando flujos para bono ${bond.name}...`);
             const startTime = Date.now();
@@ -127,22 +124,49 @@ export class BondCalculationsService {
             );
         }
 
+        // ✅ NUEVA VALIDACIÓN: Detectar datos corruptos (caracteres '[')
+        const hasCorruptInflacion = calculationInputs.inflacionSerie.some(item =>
+            typeof item === 'string' && item.includes('[')
+        );
+
+        const hasCorruptGracia = calculationInputs.graciaSerie.some(item =>
+            typeof item === 'string' && item.includes('[')
+        );
+
+        if (hasCorruptInflacion) {
+            errors.push('Serie de inflación contiene datos corruptos (caracteres especiales)');
+        }
+
+        if (hasCorruptGracia) {
+            errors.push('Serie de gracia contiene datos corruptos (caracteres especiales)');
+        }
+
         if (errors.length > 0) {
-            console.error(`❌ Series inconsistentes para bono ${bondId}:`, errors);
+            console.error(`❌ Series inconsistentes/corruptas para bono ${bondId}:`, errors);
 
             // ✅ AUTO-CORRECCIÓN: Intentar reparar las series automáticamente
             try {
                 await this.repairInconsistentSeries(bondId, numAnios);
                 console.log(`🔧 Series auto-reparadas para bono ${bondId}`);
+
+                // ✅ FORZAR REINTENTO: Lanzar excepción especial para reintento
+                throw new Error(`SERIES_REPAIRED:${bondId}`);
+
             } catch (repairError) {
+                if (repairError instanceof Error && repairError.message.startsWith('SERIES_REPAIRED:')) {
+                    // Re-lanzar la señal de reparación exitosa
+                    throw repairError;
+                }
                 console.error(`❌ Falló la auto-reparación para bono ${bondId}:`, repairError);
                 throw new Error(`Validation failed: ${errors.join(', ')}`);
             }
         }
     }
 
-    // ✅ MÉTODO NUEVO: Auto-reparar series inconsistentes
+    // ✅ MÉTODO NUEVO: Auto-reparar series inconsistentes/corruptas
     private async repairInconsistentSeries(bondId: string, expectedLength: number): Promise<void> {
+        console.log(`🔧 Iniciando reparación para bono ${bondId} con ${expectedLength} años...`);
+
         await this.prisma.$transaction(async (tx) => {
             const calcInputs = await tx.calculationInputs.findUnique({
                 where: { bondId },
@@ -153,38 +177,55 @@ export class BondCalculationsService {
                 throw new Error(`CalculationInputs no encontrado para bono ${bondId}`);
             }
 
-            const currentInflacion = calcInputs.inflacionSerie as number[];
-            const currentGracia = calcInputs.graciaSerie as GracePeriodType[];
+            const currentInflacion = calcInputs.inflacionSerie;
+            const currentGracia = calcInputs.graciaSerie;
 
-            // Reparar inflacionSerie
+            console.log('🔍 Datos antes de reparación:', {
+                inflacion: currentInflacion,
+                gracia: currentGracia
+            });
+
+            // ✅ Reparar inflacionSerie - usar valores por defecto razonables
             let repairedInflacion: number[];
-            if (currentInflacion.length !== expectedLength) {
-                if (currentInflacion.length === 0) {
-                    // Si está vacía, llenar con 0s
-                    repairedInflacion = Array(expectedLength).fill(0);
-                } else {
-                    // Si tiene datos, tomar el primer valor y replicarlo
-                    const defaultValue = currentInflacion[0] || 0;
-                    repairedInflacion = Array(expectedLength).fill(defaultValue);
-                }
+
+            // Si está corrupta o tiene longitud incorrecta, usar valores por defecto
+            if (!Array.isArray(currentInflacion) ||
+                currentInflacion.length !== expectedLength ||
+                currentInflacion.some(item => typeof item === 'string' && item.includes('['))) {
+
+                console.log('🔧 Reparando inflacionSerie corrupta...');
+                repairedInflacion = Array(expectedLength).fill(0.03); // 3% por defecto
             } else {
-                repairedInflacion = currentInflacion;
+                repairedInflacion = currentInflacion.map(item => {
+                    if (typeof item === 'number' && isFinite(item)) {
+                        return item;
+                    }
+                    return 0.03; // 3% por defecto para elementos inválidos
+                });
             }
 
-            // Reparar graciaSerie
-            let repairedGracia: GracePeriodType[];
-            if (currentGracia.length !== expectedLength) {
-                if (currentGracia.length === 0) {
-                    // Si está vacía, llenar con 'S' (sin gracia)
-                    repairedGracia = Array(expectedLength).fill('S');
-                } else {
-                    // Si tiene datos, tomar el primer valor y replicarlo
-                    const defaultValue = currentGracia[0] || 'S';
-                    repairedGracia = Array(expectedLength).fill(defaultValue);
-                }
+            // ✅ Reparar graciaSerie - usar 'S' (sin gracia) por defecto
+            let repairedGracia: ('S' | 'P' | 'T')[];
+
+            if (!Array.isArray(currentGracia) ||
+                currentGracia.length !== expectedLength ||
+                currentGracia.some(item => typeof item === 'string' && item.includes('['))) {
+
+                console.log('🔧 Reparando graciaSerie corrupta...');
+                repairedGracia = Array(expectedLength).fill('S');
             } else {
-                repairedGracia = currentGracia;
+                repairedGracia = currentGracia.map(item => {
+                    if (['S', 'P', 'T'].includes(item)) {
+                        return item;
+                    }
+                    return 'S'; // Sin gracia por defecto
+                });
             }
+
+            console.log('✅ Datos después de reparación:', {
+                inflacion: repairedInflacion,
+                gracia: repairedGracia
+            });
 
             // Actualizar en la base de datos
             await tx.calculationInputs.update({
@@ -195,9 +236,9 @@ export class BondCalculationsService {
                 }
             });
 
-            console.log(`🔧 Auto-reparación completada:
-                - inflacionSerie: ${currentInflacion.length} → ${repairedInflacion.length} elementos
-                - graciaSerie: ${currentGracia.length} → ${repairedGracia.length} elementos`);
+            console.log(`🔧 Auto-reparación completada para bono ${bondId}:
+                - inflacionSerie: ${Array.isArray(currentInflacion) ? currentInflacion.length : 'corrupta'} → ${repairedInflacion.length} elementos
+                - graciaSerie: ${Array.isArray(currentGracia) ? currentGracia.length : 'corrupta'} → ${repairedGracia.length} elementos`);
         });
     }
 
@@ -449,19 +490,80 @@ export class BondCalculationsService {
             }
         });
 
-        // ✅ VALIDACIÓN Y CONVERSIÓN SEGURA DE ARRAYS
+        // ✅ DETECCIÓN TEMPRANA DE CORRUPCIÓN Y AUTO-REPARACIÓN
+        const hasCorruptInflacion = Array.isArray(rawInflacionSerie) &&
+            rawInflacionSerie.some(item => typeof item === 'string' && item.includes('['));
+
+        const hasCorruptGracia = Array.isArray(rawGraciaSerie) &&
+            rawGraciaSerie.some(item => typeof item === 'string' && item.includes('['));
+
+        const hasWrongLength = (Array.isArray(rawInflacionSerie) && rawInflacionSerie.length !== bond.numAnios) ||
+            (Array.isArray(rawGraciaSerie) && rawGraciaSerie.length !== bond.numAnios);
+
+        if (hasCorruptInflacion || hasCorruptGracia || hasWrongLength || !Array.isArray(rawInflacionSerie) || !Array.isArray(rawGraciaSerie)) {
+            console.log(`🔧 Datos corruptos detectados para bono ${bond.id}, iniciando auto-reparación...`);
+
+            try {
+                await this.repairInconsistentSeries(bond.id, bond.numAnios);
+                console.log(`🔧 Auto-reparación completada para bono ${bond.id}`);
+
+                // ✅ RECARGAR DATOS DESPUÉS DE LA REPARACIÓN
+                const repairedCalcInputs = await this.prisma.calculationInputs.findUnique({
+                    where: { bondId: bond.id }
+                });
+
+                if (!repairedCalcInputs) {
+                    throw new Error(`No se pudieron recargar datos reparados para bono ${bond.id}`);
+                }
+
+                // Usar los datos reparados
+                const repairedInflacion = repairedCalcInputs.inflacionSerie as number[];
+                const repairedGracia = repairedCalcInputs.graciaSerie as ('S' | 'P' | 'T')[];
+
+                console.log('✅ Datos reparados cargados:', {
+                    inflacion: { length: repairedInflacion.length, sample: repairedInflacion.slice(0, 3) },
+                    gracia: { length: repairedGracia.length, sample: repairedGracia.slice(0, 3) }
+                });
+
+                return {
+                    id: repairedCalcInputs.id,
+                    valorNominal: bond.valorNominal.toNumber(),
+                    valorComercial: bond.valorComercial.toNumber(),
+                    numAnios: bond.numAnios,
+                    frecuenciaCupon: mappedFrecuenciaCupon,
+                    diasPorAno: bond.baseDias as 360 | 365,
+                    tipoTasa: mappedTipoTasa,
+                    periodicidadCapitalizacion: bond.periodicidadCapitalizacion as any,
+                    tasaAnual: bond.tasaAnual.toNumber(),
+                    tasaDescuento: 0.045,
+                    impuestoRenta: bond.impuestoRenta.toNumber(),
+                    fechaEmision: bond.fechaEmision,
+                    primaPorcentaje: bond.primaVencimiento.toNumber(),
+                    estructuracionPorcentaje: bond.costs.estructuracionPct.toNumber(),
+                    colocacionPorcentaje: bond.costs.colocacionPct.toNumber(),
+                    flotacionPorcentaje: bond.costs.flotacionPct.toNumber(),
+                    cavaliPorcentaje: bond.costs.cavaliPct.toNumber(),
+                    inflacionSerie: repairedInflacion,
+                    graciaSerie: repairedGracia,
+                };
+
+            } catch (repairError) {
+                console.error(`❌ Falló la auto-reparación para bono ${bond.id}:`, repairError);
+                throw new Error(`Failed to repair corrupted data for bond ${bond.id}: ${repairError instanceof Error ? repairError.message : String(repairError)}`);
+            }
+        }
+
+        // ✅ VALIDACIÓN Y CONVERSIÓN SEGURA DE ARRAYS (datos ya validados)
         let inflacionSerie: number[];
-        let graciaSerie: GracePeriodType[];
+        let graciaSerie: ('S' | 'P' | 'T')[];
 
         // Validar y convertir inflacionSerie
         if (!Array.isArray(rawInflacionSerie)) {
-            console.error(`❌ inflacionSerie no es array para bono ${bond.id}:`, rawInflacionSerie);
             throw new Error(`inflacionSerie must be an array for bond ${bond.id}. Got: ${typeof rawInflacionSerie}`);
         }
 
         inflacionSerie = rawInflacionSerie.map((item, index) => {
             if (typeof item !== 'number' || !isFinite(item)) {
-                console.error(`❌ inflacionSerie[${index}] no es número válido:`, item);
                 throw new Error(`inflacionSerie[${index}] must be a finite number. Got: ${item} (${typeof item})`);
             }
             return item;
@@ -469,16 +571,14 @@ export class BondCalculationsService {
 
         // Validar y convertir graciaSerie
         if (!Array.isArray(rawGraciaSerie)) {
-            console.error(`❌ graciaSerie no es array para bono ${bond.id}:`, rawGraciaSerie);
             throw new Error(`graciaSerie must be an array for bond ${bond.id}. Got: ${typeof rawGraciaSerie}`);
         }
 
         graciaSerie = rawGraciaSerie.map((item, index) => {
             if (!['S', 'P', 'T'].includes(item)) {
-                console.error(`❌ graciaSerie[${index}] valor inválido:`, item);
                 throw new Error(`graciaSerie[${index}] must be 'S', 'P', or 'T'. Got: ${item}`);
             }
-            return item as GracePeriodType;
+            return item as ('S' | 'P' | 'T');
         });
 
         console.log('✅ Series validadas:', {
@@ -504,8 +604,8 @@ export class BondCalculationsService {
             colocacionPorcentaje: bond.costs.colocacionPct.toNumber(),
             flotacionPorcentaje: bond.costs.flotacionPct.toNumber(),
             cavaliPorcentaje: bond.costs.cavaliPct.toNumber(),
-            inflacionSerie: inflacionSerie, // ✅ Array validado
-            graciaSerie: graciaSerie,       // ✅ Array validado
+            inflacionSerie: inflacionSerie,
+            graciaSerie: graciaSerie,
         };
 
         console.log('✅ convertBondToCalculationInputs completado para bono:', bond.id);
