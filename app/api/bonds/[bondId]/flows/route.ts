@@ -257,11 +257,13 @@ export async function POST(
                 { status: 500 }
             );
         }
+        const updated = await prisma.bond.findUnique({ where: { id: bondId }, select: { status: true } });
 
         return NextResponse.json({
             success: true,
             bondId,
             bondName: bond.name,
+            bondStatus: updated?.status ?? bond.status,
             message: 'Flujos recalculados exitosamente',
             flowsCount: result.flowsCount,
             calculatedAt: result.calculatedAt,

@@ -3,7 +3,8 @@
 import {
     PrismaClient,
     Prisma,
-    MetricsRole
+    MetricsRole,
+    BondStatus
 } from '../../generated/client';
 import { FinancialCalculator } from '@/lib/services/calculations/FinancialCalculator';
 import { BondModel, BondWithFullRelations } from '@/lib/models/Bond';
@@ -125,13 +126,19 @@ export class BondCalculationsService {
         }
 
         // ✅ NUEVA VALIDACIÓN: Detectar datos corruptos (caracteres '[')
-        const hasCorruptInflacion = calculationInputs.inflacionSerie.some(item =>
-            typeof item === 'string' && item.includes('[')
-        );
+        const hasCorruptInflacion = calculationInputs.inflacionSerie.some(item => {
+            if (typeof item === 'string') {
+                return item.includes('[');
+            }
+            return false;
+        });
 
-        const hasCorruptGracia = calculationInputs.graciaSerie.some(item =>
-            typeof item === 'string' && item.includes('[')
-        );
+        const hasCorruptGracia = calculationInputs.graciaSerie.some(item => {
+            if (typeof item === 'string') {
+                return item.includes('[');
+            }
+            return false;
+        });
 
         if (hasCorruptInflacion) {
             errors.push('Serie de inflación contiene datos corruptos (caracteres especiales)');
@@ -215,10 +222,10 @@ export class BondCalculationsService {
                 repairedGracia = Array(expectedLength).fill('S');
             } else {
                 repairedGracia = currentGracia.map(item => {
-                    if (['S', 'P', 'T'].includes(item)) {
+                    if (item === 'S' || item === 'P' || item === 'T') {
                         return item;
                     }
-                    return 'S'; // Sin gracia por defecto
+                    return 'S'; // Sin gracia por defecto para cualquier valor no válido
                 });
             }
 
@@ -728,6 +735,11 @@ export class BondCalculationsService {
                 }
             });
         });
+        // Activate bond if it was still in draft status
+        const current = await this.bondModel.findById(bondId);
+        if (current && current.status === BondStatus.DRAFT) {
+            await this.bondModel.updateStatus(bondId, BondStatus.ACTIVE);
+        }
     }
 
     private formatCalculationResponse(bondId: string, result: CalculationResult): BondCalculationResponse {

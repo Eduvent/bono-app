@@ -36,8 +36,11 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
 
   // Obtener datos básicos del bono
   const { data: bondData, error: bondError, mutate: refreshBond } = useSWR(
-      resolvedParams.bondId ? `/api/bonds/${resolvedParams.bondId}` : null,      fetcher
+      resolvedParams.bondId ? `/api/bonds/${resolvedParams.bondId}` : null,
+      fetcher
   )
+
+  const bond = bondData?.bond
 
   // Hook de cálculos financieros
   const {
@@ -146,8 +149,7 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
 
   // 📊 INICIALIZAR GRÁFICOS
   useEffect(() => {
-    if (!bondData) return
-
+    if (!bond) return
     // Limpiar gráficos existentes
     if (costChartInstance.current) {
       costChartInstance.current.destroy()
@@ -159,10 +161,9 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
     }
 
     // Gráfico de costes
-    if (activeTab === "summary" && costChartRef.current && bondData.costs) {
-      const ctx = costChartRef.current.getContext("2d")
+    if (activeTab === "summary" && costChartRef.current && bond?.costs) {      const ctx = costChartRef.current.getContext("2d")
       if (ctx) {
-        const costs = bondData.costs
+        const costs = bond.costs
         costChartInstance.current = new Chart(ctx, {
           type: "doughnut",
           data: {
@@ -271,7 +272,7 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
         })
       }
     }
-  }, [bondData, activeTab, flows])
+  }, [bond, activeTab, flows])
 
   // Cleanup gráficos al desmontar
   useEffect(() => {
@@ -302,7 +303,7 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
     )
   }
 
-  if (!bondData) {
+  if (!bond) {
     return (
         <div className="min-h-screen bg-[#0D0D0D] flex items-center justify-center">
           <div className="text-center">
@@ -330,7 +331,7 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
               <span className="text-white text-xl font-semibold">BonoApp</span>
             </div>
             <div className="flex items-center space-x-4">
-              {bondData.status === 'DRAFT' && hasFlowsData && (
+              {bond?.status === 'DRAFT' && hasFlowsData && (
                   <button
                       onClick={handlePublishBond}
                       disabled={isUpdating}
@@ -364,21 +365,21 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
           {/* Bond Header */}
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
             <div className="flex items-center mb-4 md:mb-0">
-              <h1 className="text-2xl font-bold mr-3">{bondData.name}</h1>
+              <h1 className="text-2xl font-bold mr-3">{bond?.name}</h1>
               <span
                   className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      bondData.status === "ACTIVE"
+                      bond?.status === "ACTIVE"
                           ? "bg-[#39FF14] text-black"
-                          : bondData.status === "DRAFT"
+                          : bond?.status === "DRAFT"
                               ? "bg-yellow-500 text-black"
-                              : bondData.status === "PAUSED"
+                              : bond?.status === "PAUSED"
                                   ? "bg-orange-500 text-black"
                                   : "bg-red-500 text-white"
                   }`}
               >
-              {bondData.status === "ACTIVE" ? "Activo" :
-                  bondData.status === "DRAFT" ? "Borrador" :
-                      bondData.status === "PAUSED" ? "Pausado" : "Vencido"}
+              {bond?.status === "ACTIVE" ? "Activo" :
+                  bond?.status === "DRAFT" ? "Borrador" :
+                      bond?.status === "PAUSED" ? "Pausado" : "Vencido"}
             </span>
             </div>
 
@@ -440,7 +441,7 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
                   <div className="space-y-4">
                     <div className="flex justify-between items-center">
                       <span className="text-gray-400">Emisor</span>
-                      <span className="font-medium">{bondData.emisor?.companyName || "N/A"}</span>
+                      <span className="font-medium">{bond?.emisor?.companyName || "N/A"}</span>
                     </div>
                     <div className="border-b border-[#2A2A2A]"></div>
 
@@ -452,21 +453,21 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
 
                     <div className="flex justify-between items-center">
                       <span className="text-gray-400">Valor Nominal</span>
-                      <span className="font-medium">{formatCurrency(bondData.valorNominal)}</span>
+                      <span className="font-medium">{formatCurrency(bond?.valorNominal)}</span>
                     </div>
                     <div className="border-b border-[#2A2A2A]"></div>
 
                     <div className="flex justify-between items-center">
                       <span className="text-gray-400">Fecha de Emisión</span>
-                      <span className="font-medium">{formatDate(bondData.fechaEmision)}</span>
+                      <span className="font-medium">{formatDate(bond?.fechaEmision)}</span>
                     </div>
                     <div className="border-b border-[#2A2A2A]"></div>
 
                     <div className="flex justify-between items-center">
                       <span className="text-gray-400">Fecha de Vencimiento</span>
                       <span className="font-medium">
-                    {bondData.fechaEmision && bondData.numAnios ?
-                        formatDate(new Date(new Date(bondData.fechaEmision).getTime() + bondData.numAnios * 365 * 24 * 60 * 60 * 1000).toISOString())
+                    {bond?.fechaEmision && bond?.numAnios ?
+                        formatDate(new Date(new Date(bond?.fechaEmision).getTime() + bond?.numAnios * 365 * 24 * 60 * 60 * 1000).toISOString())
                         : "N/A"}
                   </span>
                     </div>
@@ -480,19 +481,19 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
 
                     <div className="flex justify-between items-center">
                       <span className="text-gray-400">Tasa de Interés</span>
-                      <span className="font-medium">{formatPercent(bondData.tasaAnual)} anual</span>
+                      <span className="font-medium">{formatPercent(bond?.tasaAnual)} anual</span>
                     </div>
                     <div className="border-b border-[#2A2A2A]"></div>
 
                     <div className="flex justify-between items-center">
                       <span className="text-gray-400">Frecuencia de Pago</span>
-                      <span className="font-medium capitalize">{bondData.frecuenciaCupon}</span>
+                      <span className="font-medium capitalize">{bond?.frecuenciaCupon}</span>
                     </div>
                     <div className="border-b border-[#2A2A2A]"></div>
 
                     <div className="flex justify-between items-center">
                       <span className="text-gray-400">Días por Año</span>
-                      <span className="font-medium">{bondData.diasPorAno}</span>
+                      <span className="font-medium">{bond?.diasPorAno}</span>
                     </div>
                     <div className="border-b border-[#2A2A2A]"></div>
 
@@ -504,7 +505,7 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
 
                     <div className="flex justify-between items-center">
                       <span className="text-gray-400">Tasa Anual de Descuento</span>
-                      <span className="font-medium">{formatPercent(bondData.tasaDescuento)}</span>
+                      <span className="font-medium">{formatPercent(bond?.tasaDescuento)}</span>
                     </div>
                   </div>
                 </div>
@@ -516,7 +517,7 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="bg-[#1E1E1E] rounded-lg p-4">
                         <p className="text-gray-400 text-xs mb-1">Precio Neto Recibido Emisor</p>
-                        <p className="text-[#39FF14] font-medium text-lg">{formatCurrency(bondData.valorComercial)}</p>
+                        <p className="text-[#39FF14] font-medium text-lg">{formatCurrency(bond?.valorComercial)}</p>
                       </div>
                       <div className="bg-[#1E1E1E] rounded-lg p-4">
                         <p className="text-gray-400 text-xs mb-1">VAN Emisor</p>
@@ -546,7 +547,7 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
                   </div>
 
                   {/* Gráfico de Costes */}
-                  {bondData.costs && (
+                  {bond?.costs && (
                       <div className="bg-[#151515] rounded-xl p-6">
                         <h2 className="text-xl font-semibold mb-6">Desglose de Costes Emisor</h2>
                         <div className="h-[250px] sm:h-[300px] relative mb-6">
@@ -556,11 +557,11 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
                           <span className="text-gray-400">Total Costes Emisor</span>
                           <span className="font-medium text-[#39FF14]">
                       {formatPercent(
-                          (bondData.costs.estructuracionPorcentaje || 0) +
-                          (bondData.costs.colocacionPorcentaje || 0) +
-                          (bondData.costs.flotacionPorcentaje || 0) +
-                          (bondData.costs.cavaliPorcentaje || 0)
-                      )}
+                          (bond?.costs?.estructuracionPorcentaje || 0) +
+                          (bond?.costs?.colocacionPorcentaje || 0) +
+                          (bond?.costs?.flotacionPorcentaje || 0) +
+                          (bond?.costs?.cavaliPorcentaje || 0)
+                      )}?
                     </span>
                         </div>
                       </div>

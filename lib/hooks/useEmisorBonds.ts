@@ -8,10 +8,14 @@ interface BondSummary {
     status: string;
     createdAt: string;
     updatedAt: string;
-    nominalValue: number;
-    commercialValue: number;
-    years: number;
-    couponFrequency: string;
+    nominalValue: number;      // valorNominal
+    commercialValue: number;   // valorComercial
+    years: number;             // numAnios
+    emissionDate?: string;     // fechaEmision
+    maturityDate?: string;     // fechaVencimiento
+    couponFrequency: string;   // frecuenciaCupon
+    rateType?: string;         // tipoTasa
+    annualRate?: number;       // tasaAnual
     tceaEmisor: number | null;
     van: number | null;
     duracion: number | null;
@@ -48,39 +52,65 @@ export function useEmisorBonds(emisorId: string, options: UseEmisorBondsOptions 
         }
     );
 
+    const bonds = useMemo(() => {
+        if (!data?.bonds) return [] as BondSummary[];
+        return (data.bonds as any[]).map((b) => ({
+            id: b.id,
+            name: b.name,
+            codigoIsin: b.codigoIsin,
+            status: b.status,
+            createdAt: b.createdAt,
+            updatedAt: b.updatedAt,
+            nominalValue: b.valorNominal,
+            commercialValue: b.valorComercial,
+            years: b.numAnios,
+            emissionDate: b.fechaEmision,
+            maturityDate: b.fechaVencimiento,
+            couponFrequency: b.frecuenciaCupon,
+            rateType: b.tipoTasa,
+            annualRate: b.tasaAnual,
+            tceaEmisor: b.tceaEmisor ?? null,
+            van: b.van ?? null,
+            duracion: b.duracion ?? null,
+            flowsCount: b.flowsCount ?? 0,
+            investorsCount: b.investorsCount ?? 0,
+            hasFlows: b.hasFlows ?? false,
+            isPublished: b.isPublished ?? false,
+        }));
+    }, [data?.bonds]);
+
+
     // Métricas calculadas
     const metrics = useMemo(() => {
-        if (!data?.bonds) return null;
-
-        const bonds: BondSummary[] = data.bonds;
-
+        if (!bonds.length) return null;
+        const list = bonds as BondSummary[];
         return {
-            totalBonds: bonds.length,
-            activeBonds: bonds.filter(b => b.status === 'ACTIVE').length,
-            draftBonds: bonds.filter(b => b.status === 'DRAFT').length,
-            totalNominalValue: bonds.reduce((sum, b) => sum + b.nominalValue, 0),
-            totalCommercialValue: bonds.reduce((sum, b) => sum + b.commercialValue, 0),
-            bondsWithFlows: bonds.filter(b => b.hasFlows).length,
-            averageTCEA: bonds
+            totalBonds: list.length,
+            activeBonds: list.filter(b => b.status === 'ACTIVE').length,
+            draftBonds: list.filter(b => b.status === 'DRAFT').length,
+            totalNominalValue: list.reduce((sum, b) => sum + b.nominalValue, 0),
+            totalCommercialValue: list.reduce((sum, b) => sum + b.commercialValue, 0),
+            bondsWithFlows: list.filter(b => b.hasFlows).length,
+            averageTCEA: list
                 .filter(b => b.tceaEmisor !== null)
                 .reduce((sum, b, _, arr) => sum + (b.tceaEmisor! / arr.length), 0),
         };
-    }, [data?.bonds]);
+    }, [bonds]);
 
     // Función para filtrar bonos
     const filterBonds = useCallback((searchTerm: string, statusFilter: string) => {
-        if (!data?.bonds) return [];
+        if (!bonds.length) return [];
 
-        return data.bonds.filter((bond: BondSummary) => {
+        return bonds.filter((bond: BondSummary) => {
             const matchesStatus = statusFilter === 'all' || bond.status.toLowerCase() === statusFilter.toLowerCase();
             const matchesSearch = bond.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 bond.codigoIsin.toLowerCase().includes(searchTerm.toLowerCase());
             return matchesStatus && matchesSearch;
         });
-    }, [data?.bonds]);
+    }, [bonds]);
 
     return {
-        bonds: data?.bonds || [],
+        bonds,
         metrics,
         isLoading,
         error: error?.message || null,

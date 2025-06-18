@@ -110,10 +110,12 @@ export async function POST(
         }
 
         // 8. Retornar resultados exitosos
+        const updated = await prisma.bond.findUnique({ where: { id: bondId }, select: { status: true } });
         return NextResponse.json({
             success: true,
             bondId: result.bondId,
             bondName: bond.name,
+            bondStatus: updated?.status ?? bond.status,
             calculatedAt: result.calculatedAt,
             quickMetrics,
             metricas: result.metricas,
@@ -209,6 +211,38 @@ export async function GET(
             select: { fechaCalculo: true, createdAt: true },
             orderBy: { createdAt: 'desc' },
         });
+
+        // Obtener últimas métricas financieras guardadas
+        const [emisorMetrics, bonistaMetrics] = await Promise.all([
+            prisma.financialMetrics.findUnique({
+                where: { bondId_role: { bondId, role: 'EMISOR' } },
+            }),
+            prisma.financialMetrics.findUnique({
+                where: { bondId_role: { bondId, role: 'BONISTA' } },
+            }),
+        ]);
+
+        const metrics = emisorMetrics && bonistaMetrics ? {
+            emisor: {
+                precioActual: emisorMetrics.precioActual.toNumber(),
+                van: emisorMetrics.van.toNumber(),
+                tceaEmisor: emisorMetrics.tcea?.toNumber() ?? 0,
+                tceaEmisorConEscudo: emisorMetrics.tceaConEscudo?.toNumber() ?? 0,
+                duracion: emisorMetrics.duracion.toNumber(),
+                duracionModificada: emisorMetrics.duracionModificada.toNumber(),
+                convexidad: emisorMetrics.convexidad.toNumber(),
+                totalRatiosDecision: emisorMetrics.totalRatiosDecision.toNumber(),
+            },
+            bonista: {
+                precioActual: bonistaMetrics.precioActual.toNumber(),
+                van: bonistaMetrics.van.toNumber(),
+                treaBonista: bonistaMetrics.trea?.toNumber() ?? 0,
+                duracion: bonistaMetrics.duracion.toNumber(),
+                duracionModificada: bonistaMetrics.duracionModificada.toNumber(),
+                convexidad: bonistaMetrics.convexidad.toNumber(),
+                totalRatiosDecision: bonistaMetrics.totalRatiosDecision.toNumber(),
+            },
+        } : null;
 
         return NextResponse.json({
             bondId,

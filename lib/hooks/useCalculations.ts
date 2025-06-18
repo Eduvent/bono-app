@@ -57,6 +57,7 @@ interface CalculationStatus {
         needsRecalculation: boolean;
         reasons: string[];
     };
+    metrics?: CalculationMetrics | null;
     actions: {
         canCalculate: boolean;
         shouldRecalculate: boolean;
@@ -174,6 +175,20 @@ export function useCalculations(bondId?: string, options: UseCalculationsOptions
             throw error;
         }
     }, [bondId, refreshStatus]);
+
+    // Actualizar resultado desde métricas guardadas
+    useEffect(() => {
+        if (status?.metrics) {
+            setLastResult({
+                success: true,
+                bondId: status.bondId,
+                bondName: status.bondName,
+                calculatedAt: status.calculation.lastCalculated || new Date().toISOString(),
+                metricas: status.metrics,
+                flowsCount: status.calculation.flowsCount,
+            });
+        }
+    }, [status]);
 
     // NUEVO CÓDIGO (sin calculate en dependencies):
     useEffect(() => {
