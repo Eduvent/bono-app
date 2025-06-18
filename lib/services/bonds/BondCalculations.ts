@@ -1,10 +1,9 @@
-// lib/services/bonds/BondCalculations.ts
+// lib/services/bonds/BondCalculations.ts - CORRECCIÓN
 
 import {
     PrismaClient,
     Prisma,
-    // BondStatus as PrismaBondStatus, // No se usa directamente si usamos MetricsRole
-    MetricsRole // Importar el enum MetricsRole
+    MetricsRole
 } from '../../generated/client';
 import { FinancialCalculator } from '@/lib/services/calculations/FinancialCalculator';
 import { BondModel, BondWithFullRelations } from '@/lib/models/Bond';
@@ -12,8 +11,7 @@ import { CashFlowModel } from '@/lib/models/CashFlow';
 import {
     CalculationInputs,
     CalculationResult,
-    FrequenciaCupon, // Usar FrequenciaCupon (de types/calculations)
-    // TipoTasaMapped, // Se usa tipo literal o se define en types/calculations
+    FrequenciaCupon,
     GracePeriodType,
     PrecisionConfig
 } from '@/lib/types/calculations';
@@ -28,7 +26,7 @@ export const CalculateBondRequestSchema = z.object({
 
 export type CalculateBondRequest = z.infer<typeof CalculateBondRequestSchema>;
 
-export interface BondCalculationResponse { /* ... (sin cambios) ... */
+export interface BondCalculationResponse {
     bondId: string;
     success: boolean;
     calculatedAt: Date;
@@ -45,7 +43,6 @@ export interface BondCalculationResponse { /* ... (sin cambios) ... */
     flowsCount: number;
     errors?: string[];
 }
-
 
 export class BondCalculationsService {
     private calculator: FinancialCalculator;
@@ -68,7 +65,6 @@ export class BondCalculationsService {
     }
 
     async calculateBond(request: CalculateBondRequest): Promise<BondCalculationResponse> {
-        // ... (sin cambios respecto a la versión anterior, asegurando que calculationInputs.id se maneje bien)
         const validatedRequest = CalculateBondRequestSchema.parse(request);
         const { bondId, recalculate, saveResults } = validatedRequest;
 
@@ -82,7 +78,12 @@ export class BondCalculationsService {
             if (!bond) throw new Error(`Bono ${bondId} no encontrado`);
 
             await this.validateBondForCalculation(bond);
+
+            // ✅ CORRECCIÓN: Obtener y validar inputs antes de calcular
             const calculationInputs = await this.convertBondToCalculationInputs(bond);
+
+            // ✅ VALIDACIÓN ADICIONAL: Verificar que las series sean consistentes
+            await this.validateSeriesConsistency(bond.id, calculationInputs);
 
             console.log(`🔄 Calculando flujos para bono ${bond.name}...`);
             const startTime = Date.now();
@@ -107,12 +108,109 @@ export class BondCalculationsService {
         }
     }
 
+    // ✅ MÉTODO NUEVO: Validar consistencia de series
+    private async validateSeriesConsistency(bondId: string, calculationInputs: CalculationInputs): Promise<void> {
+        const errors: string[] = [];
+        const numAnios = calculationInputs.numAnios;
+
+        // Validar longitud de inflacionSerie
+        if (calculationInputs.inflacionSerie.length !== numAnios) {
+            errors.push(
+                `La serie de inflación debe tener ${numAnios} elementos (recibidos ${calculationInputs.inflacionSerie.length})`
+            );
+        }
+
+        // Validar longitud de graciaSerie
+        if (calculationInputs.graciaSerie.length !== numAnios) {
+            errors.push(
+                `La serie de gracia debe tener ${numAnios} elementos (recibidos ${calculationInputs.graciaSerie.length})`
+            );
+        }
+
+        if (errors.length > 0) {
+            console.error(`❌ Series inconsistentes para bono ${bondId}:`, errors);
+
+            // ✅ AUTO-CORRECCIÓN: Intentar reparar las series automáticamente
+            try {
+                await this.repairInconsistentSeries(bondId, numAnios);
+                console.log(`🔧 Series auto-reparadas para bono ${bondId}`);
+            } catch (repairError) {
+                console.error(`❌ Falló la auto-reparación para bono ${bondId}:`, repairError);
+                throw new Error(`Validation failed: ${errors.join(', ')}`);
+            }
+        }
+    }
+
+    // ✅ MÉTODO NUEVO: Auto-reparar series inconsistentes
+    private async repairInconsistentSeries(bondId: string, expectedLength: number): Promise<void> {
+        await this.prisma.$transaction(async (tx) => {
+            const calcInputs = await tx.calculationInputs.findUnique({
+                where: { bondId },
+                select: { inflacionSerie: true, graciaSerie: true }
+            });
+
+            if (!calcInputs) {
+                throw new Error(`CalculationInputs no encontrado para bono ${bondId}`);
+            }
+
+            const currentInflacion = calcInputs.inflacionSerie as number[];
+            const currentGracia = calcInputs.graciaSerie as GracePeriodType[];
+
+            // Reparar inflacionSerie
+            let repairedInflacion: number[];
+            if (currentInflacion.length !== expectedLength) {
+                if (currentInflacion.length === 0) {
+                    // Si está vacía, llenar con 0s
+                    repairedInflacion = Array(expectedLength).fill(0);
+                } else {
+                    // Si tiene datos, tomar el primer valor y replicarlo
+                    const defaultValue = currentInflacion[0] || 0;
+                    repairedInflacion = Array(expectedLength).fill(defaultValue);
+                }
+            } else {
+                repairedInflacion = currentInflacion;
+            }
+
+            // Reparar graciaSerie
+            let repairedGracia: GracePeriodType[];
+            if (currentGracia.length !== expectedLength) {
+                if (currentGracia.length === 0) {
+                    // Si está vacía, llenar con 'S' (sin gracia)
+                    repairedGracia = Array(expectedLength).fill('S');
+                } else {
+                    // Si tiene datos, tomar el primer valor y replicarlo
+                    const defaultValue = currentGracia[0] || 'S';
+                    repairedGracia = Array(expectedLength).fill(defaultValue);
+                }
+            } else {
+                repairedGracia = currentGracia;
+            }
+
+            // Actualizar en la base de datos
+            await tx.calculationInputs.update({
+                where: { bondId },
+                data: {
+                    inflacionSerie: repairedInflacion,
+                    graciaSerie: repairedGracia
+                }
+            });
+
+            console.log(`🔧 Auto-reparación completada:
+                - inflacionSerie: ${currentInflacion.length} → ${repairedInflacion.length} elementos
+                - graciaSerie: ${currentGracia.length} → ${repairedGracia.length} elementos`);
+        });
+    }
+
     async calculateQuickMetrics(bondId: string): Promise<BondCalculationResponse> {
-        // ... (sin cambios respecto a la versión anterior)
         try {
             const bond = await this.bondModel.findById(bondId);
             if (!bond) throw new Error(`Bono ${bondId} no encontrado para quick metrics`);
+
             const calculationInputs = await this.convertBondToCalculationInputs(bond);
+
+            // ✅ VALIDACIÓN TAMBIÉN EN QUICK METRICS
+            await this.validateSeriesConsistency(bond.id, calculationInputs);
+
             const quickMetricsResult = await this.calculator.calculateQuickMetrics(calculationInputs);
 
             return {
@@ -151,12 +249,10 @@ export class BondCalculationsService {
         }
     }
 
-
     async calculateMultipleBonds(
         bondIds: string[],
         options: { parallel?: boolean; batchSize?: number; onProgress?: (completed: number, total: number) => void; } = {}
     ): Promise<BondCalculationResponse[]> {
-        // ... (sin cambios respecto a la versión anterior)
         const { parallel = false, batchSize = 5, onProgress } = options;
         const results: BondCalculationResponse[] = [];
 
@@ -170,13 +266,12 @@ export class BondCalculationsService {
                 const batchPromises = batch.map(processBond);
                 const batchResultsSettled = await Promise.allSettled(batchPromises);
 
-                for (const settledResult of batchResultsSettled) { // Renombrado para claridad
+                for (const settledResult of batchResultsSettled) {
                     if (settledResult.status === 'fulfilled') {
                         results.push(settledResult.value);
                     } else {
                         const errorMessage = settledResult.reason instanceof Error ? settledResult.reason.message : String(settledResult.reason);
-                        // Intenta obtener el bondId del input original si es posible
-                        const originalPromiseIndex = batchPromises.findIndex(p => p === (settledResult as any)._promise); // Esto es un hack, puede no funcionar
+                        const originalPromiseIndex = batchPromises.findIndex(p => p === (settledResult as any)._promise);
                         const failedBondId = originalPromiseIndex !== -1 ? batch[originalPromiseIndex] : 'unknown_in_batch';
                         results.push({
                             bondId: failedBondId,
@@ -198,7 +293,6 @@ export class BondCalculationsService {
     }
 
     async getCalculatedFlows(bondId: string, userRole: 'emisor' | 'inversionista') {
-        // ... (sin cambios respecto a la versión anterior)
         const hasFlows = await this.cashFlowModel.hasFlows(bondId);
         if (!hasFlows) {
             const result = await this.calculateBond({ bondId, recalculate: true, saveResults: true });
@@ -212,7 +306,6 @@ export class BondCalculationsService {
     }
 
     async needsRecalculation(bondId: string): Promise<{ needsRecalc: boolean; reasons: string[]; }> {
-        // ... (sin cambios significativos respecto a la versión anterior)
         const reasons: string[] = [];
         const hasFlows = await this.cashFlowModel.hasFlows(bondId);
         if (!hasFlows) reasons.push('No existen flujos de caja calculados');
@@ -223,6 +316,25 @@ export class BondCalculationsService {
         if (hasFlows) {
             const integrity = await this.cashFlowModel.validateFlowIntegrity(bondId);
             if (!integrity.isValid) reasons.push(`Flujos con errores: ${integrity.errors.join(', ')}`);
+        }
+
+        // ✅ VALIDACIÓN ADICIONAL: Verificar consistencia de series
+        try {
+            const bond = await this.bondModel.findById(bondId);
+            if (bond) {
+                const calculationInputs = await this.convertBondToCalculationInputs(bond);
+                const numAnios = calculationInputs.numAnios;
+
+                if (calculationInputs.inflacionSerie.length !== numAnios) {
+                    reasons.push(`Serie de inflación inconsistente: ${calculationInputs.inflacionSerie.length} vs ${numAnios} años`);
+                }
+
+                if (calculationInputs.graciaSerie.length !== numAnios) {
+                    reasons.push(`Serie de gracia inconsistente: ${calculationInputs.graciaSerie.length} vs ${numAnios} años`);
+                }
+            }
+        } catch (error) {
+            reasons.push('Error validando consistencia de series');
         }
 
         const bond = await this.prisma.bond.findUnique({ where: { id: bondId }, select: { updatedAt: true } });
@@ -250,15 +362,15 @@ export class BondCalculationsService {
         const [flowsCount, emisorMetrics, bonistaMetrics] = await Promise.all([
             this.prisma.cashFlow.count({ where: { bondId } }),
             this.prisma.financialMetrics.findUnique({
-                where: { bondId_role: { bondId, role: MetricsRole.EMISOR } } // CORRECCIÓN: Usar Enum MetricsRole
+                where: { bondId_role: { bondId, role: MetricsRole.EMISOR } }
             }),
             this.prisma.financialMetrics.findUnique({
-                where: { bondId_role: { bondId, role: MetricsRole.BONISTA } } // CORRECCIÓN: Usar Enum MetricsRole
+                where: { bondId_role: { bondId, role: MetricsRole.BONISTA } }
             }),
         ]);
 
         if (flowsCount > 0 && emisorMetrics && bonistaMetrics) {
-            return { /* ... (resto del mapeo sin cambios) ... */
+            return {
                 bondId, success: true, calculatedAt: emisorMetrics.fechaCalculo,
                 metricas: {
                     emisor: {
@@ -286,7 +398,6 @@ export class BondCalculationsService {
     }
 
     private async validateBondForCalculation(bond: BondWithFullRelations): Promise<void> {
-        // ... (sin cambios)
         const errors: string[] = [];
         if (bond.valorNominal.isNegative() || bond.valorNominal.isZero()) errors.push('Valor nominal inválido');
         if (bond.valorComercial.isNegative() || bond.valorComercial.isZero()) errors.push('Valor comercial inválido');
@@ -303,22 +414,23 @@ export class BondCalculationsService {
         if (!bond.costs) throw new Error(`Costes no definidos para bono ${bond.id}`);
         if (!calcInputsRecord) throw new Error(`Registro CalculationInputs no encontrado para bono ${bond.id}`);
 
-        const frecuenciaCuponMap: Record<string, FrequenciaCupon> = { // Usar FrequenciaCupon de types/calculations
+        const frecuenciaCuponMap: Record<string, FrequenciaCupon> = {
             MENSUAL: 'mensual', BIMESTRAL: 'bimestral', TRIMESTRAL: 'trimestral',
             CUATRIMESTRAL: 'cuatrimestral', SEMESTRAL: 'semestral', ANUAL: 'anual',
         };
-        const tipoTasaMap: Record<string, 'efectiva' | 'nominal'> = { // Usar tipo literal
+        const tipoTasaMap: Record<string, 'efectiva' | 'nominal'> = {
             EFECTIVA: 'efectiva', NOMINAL: 'nominal',
         };
-        // Asegúrate que bond.frecuenciaCupon y bond.tipoTasa (que vienen del enum de Prisma)
-        // se puedan usar como claves en estos maps. Si los enums de Prisma son exactamente 'MENSUAL', 'EFECTIVA', etc.
-        // entonces esto funciona.
+
         const mappedFrecuenciaCupon = frecuenciaCuponMap[bond.frecuenciaCupon as keyof typeof frecuenciaCuponMap];
         const mappedTipoTasa = tipoTasaMap[bond.tipoTasa as keyof typeof tipoTasaMap];
 
         if (!mappedFrecuenciaCupon) throw new Error(`Frecuencia de cupón no mapeada: ${bond.frecuenciaCupon}`);
         if (!mappedTipoTasa) throw new Error(`Tipo de tasa no mapeado: ${bond.tipoTasa}`);
 
+        // ✅ OBTENER SERIES DE LA BASE DE DATOS (pueden estar inconsistentes)
+        const rawInflacionSerie = calcInputsRecord.inflacionSerie as number[];
+        const rawGraciaSerie = calcInputsRecord.graciaSerie as GracePeriodType[];
 
         return {
             id: calcInputsRecord.id,
@@ -328,7 +440,7 @@ export class BondCalculationsService {
             frecuenciaCupon: mappedFrecuenciaCupon,
             diasPorAno: bond.baseDias as 360 | 365,
             tipoTasa: mappedTipoTasa,
-            periodicidadCapitalizacion: bond.periodicidadCapitalizacion as any, // Podría necesitar un mapeo similar
+            periodicidadCapitalizacion: bond.periodicidadCapitalizacion as any,
             tasaAnual: bond.tasaAnual.toNumber(),
             tasaDescuento: 0.045,
             impuestoRenta: bond.impuestoRenta.toNumber(),
@@ -338,8 +450,8 @@ export class BondCalculationsService {
             colocacionPorcentaje: bond.costs.colocacionPct.toNumber(),
             flotacionPorcentaje: bond.costs.flotacionPct.toNumber(),
             cavaliPorcentaje: bond.costs.cavaliPct.toNumber(),
-            inflacionSerie: calcInputsRecord.inflacionSerie as number[],
-            graciaSerie: calcInputsRecord.graciaSerie as GracePeriodType[],
+            inflacionSerie: rawInflacionSerie, // ⚠️ Puede estar inconsistente
+            graciaSerie: rawGraciaSerie,       // ⚠️ Puede estar inconsistente
         };
     }
 
@@ -350,7 +462,7 @@ export class BondCalculationsService {
     ): Promise<void> {
         await this.prisma.$transaction(async (tx) => {
             if (result.flujos && result.flujos.length > 0) {
-                const prismaFlowsData = result.flujos.map(flow => { /* ... (sin cambios de la versión anterior) ... */
+                const prismaFlowsData = result.flujos.map(flow => {
                     const data: Prisma.CashFlowCreateManyInput = {
                         bondId, periodo: flow.periodo, fecha: flow.fecha,
                         inflacionAnual: flow.inflacionAnual !== null ? new Decimal(flow.inflacionAnual) : null,
@@ -379,8 +491,7 @@ export class BondCalculationsService {
 
             const commonMetricsCreatePayload = (metrics: CalculationResult['metricas']) => ({
                 precioActual: metrics.precioActual,
-                utilidadPerdida: metrics.utilidadPerdida, // Asumiendo que FinancialMetrics (de types/calculations) tiene utilidadPerdida
-                // van: metrics.van, // Tu tipo FinancialMetrics (de types/calculations) NO tiene 'van'
+                utilidadPerdida: metrics.utilidadPerdida,
                 duracion: metrics.duracion,
                 duracionModificada: metrics.duracionModificada,
                 convexidad: metrics.convexidad,
@@ -389,7 +500,7 @@ export class BondCalculationsService {
             });
 
             await tx.financialMetrics.upsert({
-                where: { bondId_role: { bondId, role: MetricsRole.EMISOR } }, // Usar Enum
+                where: { bondId_role: { bondId, role: MetricsRole.EMISOR } },
                 create: {
                     bondId, role: MetricsRole.EMISOR,
                     ...commonMetricsCreatePayload(result.metricas),
@@ -407,7 +518,7 @@ export class BondCalculationsService {
                 },
             });
             await tx.financialMetrics.upsert({
-                where: { bondId_role: { bondId, role: MetricsRole.BONISTA } }, // Usar Enum
+                where: { bondId_role: { bondId, role: MetricsRole.BONISTA } },
                 create: {
                     bondId, role: MetricsRole.BONISTA,
                     ...commonMetricsCreatePayload(result.metricas),
@@ -423,11 +534,9 @@ export class BondCalculationsService {
                 },
             });
 
-            // CORRECCIÓN para where y aserciones de tipo JSON
-            // Asume que @@unique([bondId, calculationInputsId], name: "CalculationResult_bondId_calculationInputsId_key") existe en schema.prisma
             await tx.calculationResult.upsert({
                 where: {
-                    CalculationResult_bondId_calculationInputsId_key: { // Usar el NOMBRE del índice único
+                    CalculationResult_bondId_calculationInputsId_key: {
                         bondId,
                         calculationInputsId
                     }
@@ -448,7 +557,6 @@ export class BondCalculationsService {
     }
 
     private formatCalculationResponse(bondId: string, result: CalculationResult): BondCalculationResponse {
-        // ... (sin cambios)
         return {
             bondId, success: true, calculatedAt: result.fechaCalculo,
             metricas: {
@@ -471,7 +579,6 @@ export class BondCalculationsService {
     }
 
     private getEmptyMetrics() {
-        // ... (sin cambios)
         const emptyBase = { precioActual: 0, van: 0, duracion: 0, duracionModificada: 0, convexidad: 0, totalRatiosDecision: 0 };
         return {
             emisor: { ...emptyBase, tceaEmisor: 0, tceaEmisorConEscudo: 0 },
