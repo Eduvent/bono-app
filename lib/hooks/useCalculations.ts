@@ -175,14 +175,19 @@ export function useCalculations(bondId?: string, options: UseCalculationsOptions
         }
     }, [bondId, refreshStatus]);
 
-    // Auto-calcular si está habilitado y se necesita
+    // NUEVO CÓDIGO (sin calculate en dependencies):
     useEffect(() => {
-        if (autoCalculate && status?.actions.shouldRecalculate && bondId) {
-            console.log(`🔄 Auto-calculando bono ${bondId}...`);
-            calculate({ recalculate: false, saveResults: true });
+        if (!autoCalculate || !bondId || !status?.actions?.shouldRecalculate || isCalculating) {
+            return;
         }
-    }, [autoCalculate, status?.actions.shouldRecalculate, bondId, calculate]);
 
+        // Usar timeout para evitar bucles
+        const timer = setTimeout(() => {
+            calculate({ recalculate: false, saveResults: true }).catch(console.error);
+        }, 500);
+
+        return () => clearTimeout(timer);
+    }, [autoCalculate, bondId, status?.actions?.shouldRecalculate, isCalculating]); // SIN 'calculate'
     return {
         // Estado del cálculo
         status,
