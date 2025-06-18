@@ -428,11 +428,65 @@ export class BondCalculationsService {
         if (!mappedFrecuenciaCupon) throw new Error(`Frecuencia de cupón no mapeada: ${bond.frecuenciaCupon}`);
         if (!mappedTipoTasa) throw new Error(`Tipo de tasa no mapeado: ${bond.tipoTasa}`);
 
-        // ✅ OBTENER SERIES DE LA BASE DE DATOS (pueden estar inconsistentes)
-        const rawInflacionSerie = calcInputsRecord.inflacionSerie as number[];
-        const rawGraciaSerie = calcInputsRecord.graciaSerie as GracePeriodType[];
+        // ✅ OBTENER SERIES DE LA BASE DE DATOS CON VALIDACIÓN ADICIONAL
+        const rawInflacionSerie = calcInputsRecord.inflacionSerie;
+        const rawGraciaSerie = calcInputsRecord.graciaSerie;
 
-        return {
+        console.log('🔍 Debug convertBondToCalculationInputs:', {
+            bondId: bond.id,
+            numAnios: bond.numAnios,
+            rawInflacionSerie: {
+                value: rawInflacionSerie,
+                type: typeof rawInflacionSerie,
+                isArray: Array.isArray(rawInflacionSerie),
+                length: Array.isArray(rawInflacionSerie) ? rawInflacionSerie.length : 'N/A'
+            },
+            rawGraciaSerie: {
+                value: rawGraciaSerie,
+                type: typeof rawGraciaSerie,
+                isArray: Array.isArray(rawGraciaSerie),
+                length: Array.isArray(rawGraciaSerie) ? rawGraciaSerie.length : 'N/A'
+            }
+        });
+
+        // ✅ VALIDACIÓN Y CONVERSIÓN SEGURA DE ARRAYS
+        let inflacionSerie: number[];
+        let graciaSerie: GracePeriodType[];
+
+        // Validar y convertir inflacionSerie
+        if (!Array.isArray(rawInflacionSerie)) {
+            console.error(`❌ inflacionSerie no es array para bono ${bond.id}:`, rawInflacionSerie);
+            throw new Error(`inflacionSerie must be an array for bond ${bond.id}. Got: ${typeof rawInflacionSerie}`);
+        }
+
+        inflacionSerie = rawInflacionSerie.map((item, index) => {
+            if (typeof item !== 'number' || !isFinite(item)) {
+                console.error(`❌ inflacionSerie[${index}] no es número válido:`, item);
+                throw new Error(`inflacionSerie[${index}] must be a finite number. Got: ${item} (${typeof item})`);
+            }
+            return item;
+        });
+
+        // Validar y convertir graciaSerie
+        if (!Array.isArray(rawGraciaSerie)) {
+            console.error(`❌ graciaSerie no es array para bono ${bond.id}:`, rawGraciaSerie);
+            throw new Error(`graciaSerie must be an array for bond ${bond.id}. Got: ${typeof rawGraciaSerie}`);
+        }
+
+        graciaSerie = rawGraciaSerie.map((item, index) => {
+            if (!['S', 'P', 'T'].includes(item)) {
+                console.error(`❌ graciaSerie[${index}] valor inválido:`, item);
+                throw new Error(`graciaSerie[${index}] must be 'S', 'P', or 'T'. Got: ${item}`);
+            }
+            return item as GracePeriodType;
+        });
+
+        console.log('✅ Series validadas:', {
+            inflacionSerie: { length: inflacionSerie.length, sample: inflacionSerie.slice(0, 3) },
+            graciaSerie: { length: graciaSerie.length, sample: graciaSerie.slice(0, 3) }
+        });
+
+        const result = {
             id: calcInputsRecord.id,
             valorNominal: bond.valorNominal.toNumber(),
             valorComercial: bond.valorComercial.toNumber(),
@@ -450,9 +504,12 @@ export class BondCalculationsService {
             colocacionPorcentaje: bond.costs.colocacionPct.toNumber(),
             flotacionPorcentaje: bond.costs.flotacionPct.toNumber(),
             cavaliPorcentaje: bond.costs.cavaliPct.toNumber(),
-            inflacionSerie: rawInflacionSerie, // ⚠️ Puede estar inconsistente
-            graciaSerie: rawGraciaSerie,       // ⚠️ Puede estar inconsistente
+            inflacionSerie: inflacionSerie, // ✅ Array validado
+            graciaSerie: graciaSerie,       // ✅ Array validado
         };
+
+        console.log('✅ convertBondToCalculationInputs completado para bono:', bond.id);
+        return result;
     }
 
     private async saveCalculationResults(
