@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, use as usePromise } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Calculator, Download, Play, Pause, Share2, RefreshCw } from "lucide-react"
 import Chart from "chart.js/auto"
@@ -11,21 +11,20 @@ import { useBondStatus } from "@/lib/hooks/useBondStatus"
 import useSWR from 'swr'
 
 interface BondDetailProps {
-  params: {
-    bondId: string
-  }
-  searchParams?: { created?: string; tab?: string }
+  params: Promise<{ bondId: string }>
+  searchParams?: Promise<{ created?: string; tab?: string }>
 }
 
 const fetcher = (url: string) => fetch(url).then(res => res.json())
 
 export default function BondDetailPage({ params, searchParams }: BondDetailProps) {
+  const resolvedParams = usePromise(params)
+  const resolvedSearch = searchParams ? usePromise(searchParams) : undefined
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<"summary" | "flows" | "analytics">(
-      (searchParams?.tab as any) || "summary"
+      (resolvedSearch?.tab as any) || "summary"
   )
-  const [showSuccessMessage, setShowSuccessMessage] = useState(!!searchParams?.created)
-
+  const [showSuccessMessage, setShowSuccessMessage] = useState(!!resolvedSearch?.created)
   // Referencias para gráficos
   const costChartRef = useRef<HTMLCanvasElement>(null)
   const flowChartRef = useRef<HTMLCanvasElement>(null)
@@ -37,8 +36,7 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
 
   // Obtener datos básicos del bono
   const { data: bondData, error: bondError, mutate: refreshBond } = useSWR(
-      params.bondId ? `/api/bonds/${params.bondId}` : null,
-      fetcher
+      resolvedParams.bondId ? `/api/bonds/${resolvedParams.bondId}` : null,      fetcher
   )
 
   // Hook de cálculos financieros
@@ -49,8 +47,7 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
     hasFlows,
     needsRecalculation,
     canCalculate
-  } = useCalculations(params.bondId, {
-    autoCalculate: false,
+  } = useCalculations(resolvedParams.bondId, {    autoCalculate: false,
     onSuccess: (result) => {
       console.log('✅ Cálculos completados:', result)
     }
@@ -64,7 +61,7 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
     recalculate: recalculateFlows,
     summary,
     hasFlows: hasFlowsData
-  } = useCashFlows(params.bondId, {
+  } = useCashFlows(resolvedParams.bondId, {
     role: 'emisor',
     autoCalculate: false
   })
@@ -75,7 +72,7 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
     publishBond,
     pauseBond,
     isUpdating
-  } = useBondStatus(params.bondId)
+  } = useBondStatus(resolvedParams.bondId)
 
   // Ocultar mensaje de éxito después de 5 segundos
   useEffect(() => {
@@ -118,8 +115,7 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
 
   // 🔧 FUNCIONES DE ACCIÓN
   const handleCalculateFlows = async () => {
-    if (!params.bondId || !canCalculate) return
-
+    if (!resolvedParams.bondId || !canCalculate) return
     try {
       await calculate({
         recalculate: needsRecalculation,
