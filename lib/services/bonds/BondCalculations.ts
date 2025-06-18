@@ -470,8 +470,25 @@ export class BondCalculationsService {
         if (!mappedTipoTasa) throw new Error(`Tipo de tasa no mapeado: ${bond.tipoTasa}`);
 
         // ✅ OBTENER SERIES DE LA BASE DE DATOS CON VALIDACIÓN ADICIONAL
-        const rawInflacionSerie = calcInputsRecord.inflacionSerie;
-        const rawGraciaSerie = calcInputsRecord.graciaSerie;
+        let rawInflacionSerie = calcInputsRecord.inflacionSerie as any;
+        let rawGraciaSerie = calcInputsRecord.graciaSerie as any;
+
+        // Parsear si las series fueron guardadas como JSON en formato string
+        if (typeof rawInflacionSerie === 'string') {
+            try {
+                rawInflacionSerie = JSON.parse(rawInflacionSerie);
+            } catch {
+                console.error('❌ Error parseando inflacionSerie para bono', bond.id);
+            }
+        }
+
+        if (typeof rawGraciaSerie === 'string') {
+            try {
+                rawGraciaSerie = JSON.parse(rawGraciaSerie);
+            } catch {
+                console.error('❌ Error parseando graciaSerie para bono', bond.id);
+            }
+        }
 
         console.log('🔍 Debug convertBondToCalculationInputs:', {
             bondId: bond.id,

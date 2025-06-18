@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
             const calculationInputs = await tx.calculationInputs.create({
                 data: {
                     bondId: bond.id,
-                    inputsData: JSON.stringify({
+                    inputsData: ({
                         valorNominal: validatedData.valorNominal,
                         valorComercial: validatedData.valorComercial,
                         numAnios: validatedData.numAnios,
@@ -176,8 +176,8 @@ export async function POST(request: NextRequest) {
                         flotacionPorcentaje: validatedData.flotacionPorcentaje,
                         cavaliPorcentaje: validatedData.cavaliPorcentaje,
                     }),
-                    inflacionSerie: JSON.stringify(validatedData.inflacionSerie),
-                    graciaSerie: JSON.stringify(validatedData.graciaSerie),
+                    inflacionSerie: (validatedData.inflacionSerie),
+                    graciaSerie: (validatedData.graciaSerie),
                 }
             });
 
