@@ -1,6 +1,6 @@
 // app/api/emisor/[emisorId]/bonds/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '../../../../../lib/generated/client';
+import { PrismaClient, MetricsRole } from '../../../../../lib/generated/client';
 import { z } from 'zod';
 
 const prisma = new PrismaClient();
@@ -73,20 +73,11 @@ export async function GET(
         const [bonds, totalCount] = await Promise.all([
             prisma.bond.findMany({
                 where: whereClause,
-                select: {
-                    id: true,
-                    name: true,
-                    codigoIsin: true,
-                    status: true,
-                    valorNominal: true,
-                    valorComercial: true,
-                    fechaEmision: true,
-                    fechaVencimiento: true,
-                    frecuenciaCupon: true,
-                    tipoTasa: true,
-                    tasaAnual: true,
-                    createdAt: true,
-                    updatedAt: true,
+                include: {
+                    financialMetrics: {
+                        where: { role: MetricsRole.EMISOR },
+                        select: { tcea: true, van: true, duracion: true },
+                    },
                 },
                 orderBy: { createdAt: 'desc' },
                 take: limit,
@@ -101,10 +92,23 @@ export async function GET(
         const response = {
             success: true,
             bonds: bonds.map(bond => ({
-                ...bond,
+                id: bond.id,
+                name: bond.name,
+                codigoIsin: bond.codigoIsin,
+                status: bond.status,
                 valorNominal: bond.valorNominal.toNumber(),
                 valorComercial: bond.valorComercial.toNumber(),
+                numAnios: bond.numAnios,
+                fechaEmision: bond.fechaEmision,
+                fechaVencimiento: bond.fechaVencimiento,
+                frecuenciaCupon: bond.frecuenciaCupon,
+                tipoTasa: bond.tipoTasa,
                 tasaAnual: bond.tasaAnual.toNumber(),
+                createdAt: bond.createdAt,
+                updatedAt: bond.updatedAt,
+                tceaEmisor: bond.financialMetrics[0]?.tcea?.toNumber() ?? null,
+                van: bond.financialMetrics[0]?.van?.toNumber() ?? null,
+                duracion: bond.financialMetrics[0]?.duracion?.toNumber() ?? null,
             })),
             pagination: {
                 total: totalCount,

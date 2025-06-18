@@ -1,7 +1,12 @@
-import {NextRequest, NextResponse} from "next/server";
-import {PrismaClient} from "../../../../../lib/generated/client"
+import { NextRequest, NextResponse } from 'next/server';
+import { PrismaClient, BondStatus } from '../../../../../lib/generated/client';
+import { z } from 'zod';
 
-const prisma = new PrismaClient()
+const prisma = new PrismaClient();
+
+const UpdateStatusSchema = z.object({
+    status: z.enum(['DRAFT', 'ACTIVE', 'PAUSED', 'COMPLETED']),
+});
 
 export async function PUT(
     request: NextRequest,
@@ -9,22 +14,12 @@ export async function PUT(
 ) {
     try {
         const { bondId } = await params;
-        const { status } = await request.json();
-
-        const validStatuses = ['DRAFT', 'ACTIVE', 'PAUSED', 'COMPLETED'];
-        if (!validStatuses.includes(status)) {
-            return NextResponse.json(
-                { error: 'Estado inválido' },
-                { status: 400 }
-            );
-        }
+        const { status } = UpdateStatusSchema.parse(await request.json());
+        const prismaStatus = BondStatus[status as keyof typeof BondStatus];
 
         const updatedBond = await prisma.bond.update({
             where: { id: bondId },
-            data: {
-                status,
-                ...(status === 'ACTIVE' ? { publishedAt: new Date() } : {})
-            },
+            data: { status: prismaStatus },
         });
 
         return NextResponse.json({

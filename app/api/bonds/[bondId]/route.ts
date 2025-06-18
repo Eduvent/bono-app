@@ -43,6 +43,11 @@ export async function GET(
                 tipoTasa: bond.tipoTasa,
                 periodicidadCapitalizacion: bond.periodicidadCapitalizacion,
                 tasaAnual: bond.tasaAnual.toNumber(),
+                tasaDescuento: bond.calculationInputs ?
+                    (typeof bond.calculationInputs.inputsData === 'string'
+                        ? JSON.parse(bond.calculationInputs.inputsData as unknown as string).tasaDescuento
+                        : (bond.calculationInputs.inputsData as any).tasaDescuento)
+                    : undefined,
                 impuestoRenta: bond.impuestoRenta.toNumber(),
                 primaVencimiento: bond.primaVencimiento.toNumber(),
                 costs: bond.costs ? {

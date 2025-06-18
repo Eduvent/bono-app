@@ -49,8 +49,9 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
     lastResult,
     hasFlows,
     needsRecalculation,
-    canCalculate
-  } = useCalculations(resolvedParams.bondId, {    autoCalculate: false,
+    canCalculate,
+    isLoadingStatus
+  } = useCalculations(resolvedParams.bondId, {    autoCalculate: true,
     onSuccess: (result) => {
       console.log('✅ Cálculos completados:', result)
     }
@@ -66,7 +67,7 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
     hasFlows: hasFlowsData
   } = useCashFlows(resolvedParams.bondId, {
     role: 'emisor',
-    autoCalculate: false
+    autoCalculate: true
   })
 
   // Hook de estado del bono
@@ -140,6 +141,12 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
 
   const handlePublishBond = async () => {
     try {
+      if (!hasFlows || needsRecalculation) {
+        await calculate({
+          recalculate: needsRecalculation,
+          saveResults: true
+        })
+      }
       await publishBond()
       await refreshBond()
     } catch (error) {
@@ -309,6 +316,18 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#39FF14] mx-auto"></div>
             <p className="text-white mt-4">Cargando detalles del bono...</p>
+          </div>
+        </div>
+    )
+  }
+  const initialAutoLoading = (!lastResult || !hasFlowsData) && (isLoadingStatus || isCalculating || flowsLoading)
+
+  if (initialAutoLoading) {
+    return (
+        <div className="min-h-screen bg-[#0D0D0D] flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#39FF14] mx-auto"></div>
+            <p className="text-white mt-4">Calculando flujos...</p>
           </div>
         </div>
     )
