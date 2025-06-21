@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react"
 import { useRouter, useParams } from "next/navigation"
+import { useAuth } from '@/lib/hooks/useAuth'
+import { useBondDetails } from '@/lib/hooks/useBondDetails'
+import { useInvestInBond } from '@/lib/hooks/useInvestInBond'
 import {
   LineChartIcon as ChartLine,
   ArrowLeft,
@@ -14,24 +17,6 @@ import {
   ArrowRight,
   Loader2,
 } from "lucide-react"
-
-interface BondDetails {
-  id: string
-  name: string
-  isinCode: string
-  issuer: string
-  currency: string
-  nominalValue: number
-  commercialPrice: number
-  issueDate: string
-  maturityDate: string
-  couponRate: number
-  paymentFrequency: string
-  rateType: string
-  inflationIndexed: boolean
-  inflationRate: number
-  maturityPremium: number
-}
 
 interface InvestmentCosts {
   flotation: number
@@ -66,6 +51,7 @@ export default function InvestBondWizard() {
   const router = useRouter()
   const params = useParams()
   const bondId = params.bondId as string
+  const { user } = useAuth({ requireRole: 'INVERSIONISTA' })
 
   const [currentStep, setCurrentStep] = useState(1)
   const [inversionistaData, setInversionistaData] = useState<any>(null)
@@ -75,44 +61,38 @@ export default function InvestBondWizard() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [showSuccessToast, setShowSuccessToast] = useState(false)
 
-  // Sample bond data - in real app, this would be fetched based on bondId
-  const bondDetails: BondDetails = {
-    id: bondId,
-    name: "Bono Corporativo XYZ",
-    isinCode: "PE123456789",
-    issuer: "Corporación Financiera XYZ",
-    currency: "PEN (S/)",
-    nominalValue: 1000.0,
-    commercialPrice: 1050.0,
-    issueDate: "15/05/2023",
-    maturityDate: "15/05/2028",
-    couponRate: 7.25,
-    paymentFrequency: "Semestral",
-    rateType: "Efectiva",
-    inflationIndexed: true,
-    inflationRate: 3.2,
-    maturityPremium: 1.5,
-  }
+  // Hooks para datos reales
+  const { bondDetails, loading: bondLoading, error: bondError } = useBondDetails(bondId)
+  const { investInBond, loading: investLoading, error: investError } = useInvestInBond()
 
+  // Debug: Log bond details
+  useEffect(() => {
+    if (bondDetails) {
+      console.log('Bond Details loaded:', bondDetails)
+    }
+  }, [bondDetails])
+
+  // Datos calculados basados en el bono real
   const investmentCosts: InvestmentCosts = {
-    flotation: 7.88,
-    cavali: 2.1,
-    total: 9.98,
+    flotation: bondDetails && bondDetails.commercialPrice ? (bondDetails.commercialPrice * 0.0075) : 0,
+    cavali: bondDetails && bondDetails.commercialPrice ? (bondDetails.commercialPrice * 0.0021) : 0,
+    total: bondDetails && bondDetails.commercialPrice ? (bondDetails.commercialPrice * 0.0098) : 0,
   }
 
-  const totalDisbursement = bondDetails.commercialPrice + investmentCosts.total
+  const totalDisbursement = bondDetails && bondDetails.commercialPrice ? (bondDetails.commercialPrice + investmentCosts.total) : 0
 
   const kpis: KPIs = {
-    estimatedTREA: 8.45,
-    duration: 4.23,
-    convexity: 21.45,
-    estimatedVAN: 1124.67,
+    estimatedTREA: bondDetails?.estimatedTREA || 0,
+    duration: 4.23, // Esto debería calcularse dinámicamente
+    convexity: 21.45, // Esto debería calcularse dinámicamente
+    estimatedVAN: bondDetails && bondDetails.nominalValue ? (bondDetails.nominalValue * 1.12467) : 0,
   }
 
-  const flowProjections: FlowProjection[] = [
+  // Flujos de caja simulados - en una implementación real, esto vendría del endpoint de cálculos
+  const flowProjections: FlowProjection[] = bondDetails ? [
     {
       period: 0,
-      date: "15/05/2023",
+      date: bondDetails.issueDate,
       inflationAnnual: 0,
       inflationSemestral: 0,
       gracePeriod: false,
@@ -120,85 +100,78 @@ export default function InvestBondWizard() {
       coupon: 0,
       amortization: 0,
       premium: 0,
-      investorFlow: -1059.98,
-      actualizedFlow: -1059.98,
+      investorFlow: -(bondDetails.commercialPrice + investmentCosts.total),
+      actualizedFlow: -(bondDetails.commercialPrice + investmentCosts.total),
       flowTimePlazo: 0,
       convexityFactor: 0,
     },
     {
       period: 1,
       date: "15/11/2023",
-      inflationAnnual: 3.2,
-      inflationSemestral: 1.58,
+      inflationAnnual: bondDetails.inflationRate || 3.2,
+      inflationSemestral: (bondDetails.inflationRate || 3.2) / 2,
       gracePeriod: false,
-      indexedBond: 1015.8,
-      coupon: 36.82,
+      indexedBond: bondDetails.nominalValue * 1.0158,
+      coupon: (bondDetails.nominalValue * 1.0158 * bondDetails.couponRate) / 100,
       amortization: 0,
       premium: 0,
-      investorFlow: 36.82,
-      actualizedFlow: 35.47,
+      investorFlow: (bondDetails.nominalValue * 1.0158 * bondDetails.couponRate) / 100,
+      actualizedFlow: ((bondDetails.nominalValue * 1.0158 * bondDetails.couponRate) / 100) * 0.963,
       flowTimePlazo: 17.74,
       convexityFactor: 8.87,
     },
     {
       period: 2,
       date: "15/05/2024",
-      inflationAnnual: 3.2,
-      inflationSemestral: 1.58,
+      inflationAnnual: bondDetails.inflationRate || 3.2,
+      inflationSemestral: (bondDetails.inflationRate || 3.2) / 2,
       gracePeriod: false,
-      indexedBond: 1031.86,
-      coupon: 37.41,
+      indexedBond: bondDetails.nominalValue * 1.03186,
+      coupon: (bondDetails.nominalValue * 1.03186 * bondDetails.couponRate) / 100,
       amortization: 0,
       premium: 0,
-      investorFlow: 37.41,
-      actualizedFlow: 34.75,
+      investorFlow: (bondDetails.nominalValue * 1.03186 * bondDetails.couponRate) / 100,
+      actualizedFlow: ((bondDetails.nominalValue * 1.03186 * bondDetails.couponRate) / 100) * 0.928,
       flowTimePlazo: 34.75,
       convexityFactor: 34.75,
     },
     {
       period: 3,
       date: "15/11/2024",
-      inflationAnnual: 3.2,
-      inflationSemestral: 1.58,
+      inflationAnnual: bondDetails.inflationRate || 3.2,
+      inflationSemestral: (bondDetails.inflationRate || 3.2) / 2,
       gracePeriod: false,
-      indexedBond: 1048.17,
-      coupon: 38.0,
+      indexedBond: bondDetails.nominalValue * 1.04817,
+      coupon: (bondDetails.nominalValue * 1.04817 * bondDetails.couponRate) / 100,
       amortization: 0,
       premium: 0,
-      investorFlow: 38.0,
-      actualizedFlow: 34.05,
+      investorFlow: (bondDetails.nominalValue * 1.04817 * bondDetails.couponRate) / 100,
+      actualizedFlow: ((bondDetails.nominalValue * 1.04817 * bondDetails.couponRate) / 100) * 0.896,
       flowTimePlazo: 51.08,
       convexityFactor: 76.61,
     },
     {
       period: 10,
-      date: "15/05/2028",
-      inflationAnnual: 3.2,
-      inflationSemestral: 1.58,
+      date: bondDetails.maturityDate,
+      inflationAnnual: bondDetails.inflationRate || 3.2,
+      inflationSemestral: (bondDetails.inflationRate || 3.2) / 2,
       gracePeriod: false,
-      indexedBond: 1173.85,
-      coupon: 42.55,
-      amortization: 1173.85,
-      premium: 17.61,
-      investorFlow: 1234.01,
-      actualizedFlow: 955.38,
+      indexedBond: bondDetails.nominalValue * 1.17385,
+      coupon: (bondDetails.nominalValue * 1.17385 * bondDetails.couponRate) / 100,
+      amortization: bondDetails.nominalValue * 1.17385,
+      premium: bondDetails.nominalValue * 1.17385 * (bondDetails.maturityPremium / 100),
+      investorFlow: bondDetails.nominalValue * 1.17385 * (1 + bondDetails.couponRate / 100 + bondDetails.maturityPremium / 100),
+      actualizedFlow: bondDetails.nominalValue * 1.17385 * (1 + bondDetails.couponRate / 100 + bondDetails.maturityPremium / 100) * 0.814,
       flowTimePlazo: 4776.9,
       convexityFactor: 23884.5,
     },
-  ]
+  ] : []
 
   useEffect(() => {
-    const userRole = localStorage.getItem("userRole")
-    if (userRole !== "inversionista") {
-      router.push("/auth/login")
-      return
+    if (user?.inversionistaProfile) {
+      setInversionistaData(user.inversionistaProfile)
     }
-
-    const profile = localStorage.getItem("inversionistaProfile")
-    if (profile) {
-      setInversionistaData(JSON.parse(profile))
-    }
-  }, [router])
+  }, [user])
 
   const handleCalculateFlows = () => {
     setIsCalculating(true)
@@ -220,32 +193,71 @@ export default function InvestBondWizard() {
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
-  const handleConfirmPurchase = () => {
+  const handleConfirmPurchase = async () => {
+    if (!bondDetails) return
+
     setIsProcessing(true)
 
-    setTimeout(() => {
-      setShowSuccessToast(true)
+    try {
+      const result = await investInBond({
+        bondId: bondDetails.id,
+        amount: bondDetails.nominalValue,
+        price: bondDetails.commercialPrice
+      })
 
-      setTimeout(() => {
-        setShowSuccessToast(false)
+      if (result.success) {
+        setShowSuccessToast(true)
 
         setTimeout(() => {
+          setShowSuccessToast(false)
           router.push("/inversionista/dashboard")
-        }, 500)
-      }, 5000)
-    }, 2000)
+        }, 3000)
+      } else {
+        // Manejar error
+        console.error('Error en la inversión:', result.message)
+      }
+    } catch (error) {
+      console.error('Error en la inversión:', error)
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   const formatCurrency = (amount: number) => {
+    if (isNaN(amount) || amount === undefined || amount === null) {
+      return 'S/ 0.00'
+    }
     return new Intl.NumberFormat("es-PE", { style: "currency", currency: "PEN" }).format(amount)
   }
 
-  if (!inversionistaData) {
+  // Loading state
+  if (bondLoading || !inversionistaData) {
     return (
       <div className="min-h-screen bg-[#0D0D0D] flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#39FF14] mx-auto"></div>
           <p className="text-white mt-4">Cargando información de inversión...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (bondError || !bondDetails) {
+    return (
+      <div className="min-h-screen bg-[#0D0D0D] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 mb-4 mx-auto flex items-center justify-center">
+            <Info className="text-red-500" size={64} />
+          </div>
+          <h2 className="text-xl font-semibold mb-2">Error al cargar el bono</h2>
+          <p className="text-gray-400 mb-6">{bondError || 'No se pudo cargar la información del bono'}</p>
+          <button
+            onClick={() => router.push("/inversionista/dashboard")}
+            className="bg-[#39FF14] text-black font-bold px-5 py-2 rounded-lg hover:shadow-[0_0_8px_rgba(57,255,20,0.47)] transition duration-250"
+          >
+            Volver al Dashboard
+          </button>
         </div>
       </div>
     )
@@ -266,7 +278,7 @@ export default function InvestBondWizard() {
             </button>
             <button className="text-gray-400 hover:text-white transition flex items-center">
               <UserCircle size={20} className="mr-1" />
-              Usuario
+              {inversionistaData?.name || 'Usuario'}
             </button>
           </div>
         </div>
@@ -343,7 +355,7 @@ export default function InvestBondWizard() {
                       <div className="flex flex-col">
                         <span className="text-[#AAAAAA] text-sm">Emisor / Moneda</span>
                         <span className="font-medium">
-                          {bondDetails.issuer} / {bondDetails.currency}
+                          {bondDetails.issuerName} / {bondDetails.currency}
                         </span>
                       </div>
 
@@ -378,6 +390,16 @@ export default function InvestBondWizard() {
                         <span className="text-[#AAAAAA] text-sm">Prima al Vencimiento</span>
                         <span className="font-medium">{bondDetails.maturityPremium}%</span>
                       </div>
+
+                      <div className="flex flex-col">
+                        <span className="text-[#AAAAAA] text-sm">Días por Año</span>
+                        <span className="font-medium">{bondDetails.daysPerYear}</span>
+                      </div>
+
+                      <div className="flex flex-col">
+                        <span className="text-[#AAAAAA] text-sm">Tasa de Descuento</span>
+                        <span className="font-medium">{bondDetails.discountRate}%</span>
+                      </div>
                     </div>
                   </div>
 
@@ -399,340 +421,278 @@ export default function InvestBondWizard() {
                             <div className="w-2 h-2 bg-[#AAAAAA] rounded-full mr-2"></div>
                             <span className="text-[#AAAAAA]">Flotación (0.75%)</span>
                           </div>
-                          <span>{formatCurrency(investmentCosts.flotation)}</span>
+                          <span className="font-medium">{formatCurrency(investmentCosts.flotation)}</span>
                         </div>
 
                         <div className="flex justify-between items-center mb-2 pl-1">
                           <div className="flex items-center">
                             <div className="w-2 h-2 bg-[#AAAAAA] rounded-full mr-2"></div>
-                            <span className="text-[#AAAAAA]">CAVALI (0.20%)</span>
+                            <span className="text-[#AAAAAA]">CAVALI (0.21%)</span>
                           </div>
-                          <span>{formatCurrency(investmentCosts.cavali)}</span>
+                          <span className="font-medium">{formatCurrency(investmentCosts.cavali)}</span>
                         </div>
 
-                        <div className="flex justify-between items-center text-sm border-t border-[#2A2A2A] pt-3 mt-3">
-                          <span className="font-medium">Total Costes Bonista:</span>
+                        <div className="flex justify-between items-center mb-2 pl-1">
+                          <div className="flex items-center">
+                            <div className="w-2 h-2 bg-[#AAAAAA] rounded-full mr-2"></div>
+                            <span className="text-[#AAAAAA]">Total Costes</span>
+                          </div>
                           <span className="font-medium">{formatCurrency(investmentCosts.total)}</span>
                         </div>
                       </div>
 
-                      <div className="flex justify-between items-center text-lg font-semibold mt-6 pt-3 border-t border-[#2A2A2A]">
-                        <span>Desembolso Total Estimado:</span>
-                        <span className="text-[#39FF14]">{formatCurrency(totalDisbursement)}</span>
+                      <div className="border-t border-[#2A2A2A] pt-4 mt-4">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-[#AAAAAA]">Desembolso Total por Unidad:</span>
+                          <span className="font-medium text-[#39FF14]">{formatCurrency(totalDisbursement)}</span>
+                        </div>
                       </div>
                     </div>
 
-                    <button
-                      onClick={handleCalculateFlows}
-                      disabled={isCalculating}
-                      className="w-full bg-[#39FF14] text-black font-medium py-3 px-4 rounded-lg hover:shadow-[0_0_8px_rgba(57,255,20,0.47)] transition mt-4 flex items-center justify-center disabled:opacity-50"
-                    >
-                      {isCalculating ? (
-                        <>
-                          <Loader2 className="mr-2 animate-spin" size={16} />
-                          Calculando...
-                        </>
-                      ) : (
-                        <>
-                          <Calculator className="mr-2" size={16} />
-                          Calcular Mis Flujos y Rendimiento
-                        </>
-                      )}
-                    </button>
+                    <div className="mb-6">
+                      <div className="bg-[#39FF14] bg-opacity-10 border border-[#39FF14] rounded-lg p-4">
+                        <h3 className="text-sm font-medium mb-2 text-[#39FF14]">Compra de Bono Completo</h3>
+                        <p className="text-sm text-[#AAAAAA]">
+                          Estás comprando 1 bono completo por {formatCurrency(bondDetails.commercialPrice)}. 
+                          Los bonos no se pueden fraccionar.
+                        </p>
+                        <div className="mt-3 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-[#AAAAAA]">Valor Nominal:</span>
+                            <span className="font-medium">{formatCurrency(bondDetails.nominalValue)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-[#AAAAAA]">Total a pagar:</span>
+                            <span className="font-bold text-[#39FF14]">{formatCurrency(totalDisbursement)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mb-6">
+                      <h3 className="text-sm font-medium mb-3">KPIs Estimados:</h3>
+
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[#AAAAAA] text-sm">TREA Estimada:</span>
+                          <span className="font-medium text-[#39FF14]">{kpis.estimatedTREA}%</span>
+                        </div>
+
+                        <div className="flex justify-between items-center">
+                          <span className="text-[#AAAAAA] text-sm">Duración:</span>
+                          <span className="font-medium">{kpis.duration} años</span>
+                        </div>
+
+                        <div className="flex justify-between items-center">
+                          <span className="text-[#AAAAAA] text-sm">Convexidad:</span>
+                          <span className="font-medium">{kpis.convexity}</span>
+                        </div>
+
+                        <div className="flex justify-between items-center">
+                          <span className="text-[#AAAAAA] text-sm">VAN Estimado:</span>
+                          <span className="font-medium">{formatCurrency(kpis.estimatedVAN)}</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="px-6 pb-6">
+                <div className="flex justify-between items-center">
+                  <button
+                    onClick={handleCalculateFlows}
+                    disabled={isCalculating}
+                    className="bg-[#39FF14] text-black font-bold px-6 py-3 rounded-lg hover:shadow-[0_0_8px_rgba(57,255,20,0.47)] transition duration-250 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                  >
+                    {isCalculating ? (
+                      <>
+                        <Loader2 className="mr-2 animate-spin" size={16} />
+                        Calculando...
+                      </>
+                    ) : (
+                      <>
+                        <Calculator className="mr-2" size={16} />
+                        Calcular Flujos de Caja
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={handleContinueToConfirmation}
+                    disabled={!flowsCalculated}
+                    className="bg-[#39FF14] text-black font-bold px-6 py-3 rounded-lg hover:shadow-[0_0_8px_rgba(57,255,20,0.47)] transition duration-250 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                  >
+                    Continuar a Confirmación
+                    <ArrowRight className="ml-2" size={16} />
+                  </button>
                 </div>
               </div>
 
               {/* Cash Flow Projection */}
               {flowsCalculated && (
                 <div id="cash-flow-projection" className="px-6 pb-6">
-                  <h2 className="text-xl font-semibold mb-4">Proyección de Flujos y Rendimiento</h2>
+                  <div className="bg-[#151515] border border-[#2A2A2A] rounded-xl p-6">
+                    <h2 className="text-xl font-semibold mb-4">Proyección de Flujos de Caja</h2>
 
-                  {/* KPIs */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                    <div className="bg-[#1E1E1E] rounded-xl p-4">
-                      <div className="text-[#AAAAAA] text-sm mb-1">TREA Estimada</div>
-                      <div className="text-xl font-bold">{kpis.estimatedTREA}%</div>
-                    </div>
-
-                    <div className="bg-[#1E1E1E] rounded-xl p-4">
-                      <div className="text-[#AAAAAA] text-sm mb-1">Duración</div>
-                      <div className="text-xl font-bold">{kpis.duration} años</div>
-                    </div>
-
-                    <div className="bg-[#1E1E1E] rounded-xl p-4">
-                      <div className="text-[#AAAAAA] text-sm mb-1">Convexidad</div>
-                      <div className="text-xl font-bold">{kpis.convexity}</div>
-                    </div>
-
-                    <div className="bg-[#1E1E1E] rounded-xl p-4">
-                      <div className="flex items-center text-[#AAAAAA] text-sm mb-1">
-                        VAN Estimado
-                        <button
-                          className="ml-1 text-gray-400 hover:text-white"
-                          title="Valor Actual Neto calculado con la tasa de descuento actual del mercado"
-                        >
-                          <Info size={12} />
-                        </button>
-                      </div>
-                      <div className="text-xl font-bold">{formatCurrency(kpis.estimatedVAN)}</div>
-                    </div>
-                  </div>
-
-                  {/* Flow Table */}
-                  <div className="overflow-x-auto bg-[#151515] border border-[#2A2A2A] rounded-xl">
-                    <table className="min-w-[1200px] w-full text-sm">
-                      <thead className="bg-[#1A1A1A] text-[#CCCCCC]">
-                        <tr>
-                          <th className="sticky left-0 bg-[#1A1A1A] z-10 py-3 px-4 text-left">Nº</th>
-                          <th className="py-3 px-4 text-left">Fecha</th>
-                          <th className="py-3 px-4 text-left">Infl. Anual (%)</th>
-                          <th className="py-3 px-4 text-left">Infl. Sem. (%)</th>
-                          <th className="py-3 px-4 text-left">Plazo de Gracia</th>
-                          <th className="py-3 px-4 text-left">Bono Indexado</th>
-                          <th className="py-3 px-4 text-left">Cupón (Interés)</th>
-                          <th className="py-3 px-4 text-left">Amort.</th>
-                          <th className="py-3 px-4 text-left">Prima</th>
-                          <th className="py-3 px-4 text-left">Flujo Bonista</th>
-                          <th className="py-3 px-4 text-left">Flujo Act.</th>
-                          <th className="py-3 px-4 text-left">FA × Plazo</th>
-                          <th className="py-3 px-4 text-left">Factor p/Convexidad</th>
-                        </tr>
-                      </thead>
-                      <tbody className="text-[#CCCCCC]">
-                        {flowProjections.map((flow, index) => (
-                          <tr
-                            key={flow.period}
-                            className={`border-t border-[#2A2A2A] ${index % 2 === 1 ? "bg-[#1E1E1E]" : ""}`}
-                          >
-                            <td
-                              className={`sticky left-0 z-10 py-3 px-4 font-medium ${index % 2 === 1 ? "bg-[#1E1E1E]" : "bg-[#151515]"}`}
-                            >
-                              {flow.period}
-                            </td>
-                            <td className="py-3 px-4">{flow.date}</td>
-                            <td className="py-3 px-4">
-                              {flow.inflationAnnual > 0 ? flow.inflationAnnual.toFixed(2) : "-"}
-                            </td>
-                            <td className="py-3 px-4">
-                              {flow.inflationSemestral > 0 ? flow.inflationSemestral.toFixed(2) : "-"}
-                            </td>
-                            <td className="py-3 px-4">{flow.gracePeriod ? "S" : "-"}</td>
-                            <td className="py-3 px-4">{flow.indexedBond > 0 ? flow.indexedBond.toFixed(2) : "-"}</td>
-                            <td className="py-3 px-4">{flow.coupon > 0 ? flow.coupon.toFixed(2) : "-"}</td>
-                            <td className="py-3 px-4">{flow.amortization > 0 ? flow.amortization.toFixed(2) : "-"}</td>
-                            <td className="py-3 px-4">{flow.premium > 0 ? flow.premium.toFixed(2) : "-"}</td>
-                            <td className={`py-3 px-4 ${flow.investorFlow < 0 ? "text-red-500" : ""}`}>
-                              {flow.investorFlow.toFixed(2)}
-                            </td>
-                            <td className="py-3 px-4">{flow.actualizedFlow.toFixed(2)}</td>
-                            <td className="py-3 px-4">{flow.flowTimePlazo.toFixed(2)}</td>
-                            <td className="py-3 px-4">{flow.convexityFactor.toFixed(2)}</td>
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[1000px]">
+                        <thead>
+                          <tr className="border-b border-[#2A2A2A]">
+                            <th className="px-4 py-2 text-left text-sm font-medium text-gray-400">Período</th>
+                            <th className="px-4 py-2 text-left text-sm font-medium text-gray-400">Fecha</th>
+                            <th className="px-4 py-2 text-left text-sm font-medium text-gray-400">Inflación Anual</th>
+                            <th className="px-4 py-2 text-left text-sm font-medium text-gray-400">Inflación Semestral</th>
+                            <th className="px-4 py-2 text-left text-sm font-medium text-gray-400">Período de Gracia</th>
+                            <th className="px-4 py-2 text-left text-sm font-medium text-gray-400">Bono Indexado</th>
+                            <th className="px-4 py-2 text-left text-sm font-medium text-gray-400">Cupón</th>
+                            <th className="px-4 py-2 text-left text-sm font-medium text-gray-400">Amortización</th>
+                            <th className="px-4 py-2 text-left text-sm font-medium text-gray-400">Prima</th>
+                            <th className="px-4 py-2 text-left text-sm font-medium text-gray-400">Flujo Inversionista</th>
+                            <th className="px-4 py-2 text-left text-sm font-medium text-gray-400">Flujo Actualizado</th>
+                            <th className="px-4 py-2 text-left text-sm font-medium text-gray-400">Flujo × Tiempo</th>
+                            <th className="px-4 py-2 text-left text-sm font-medium text-gray-400">Factor Convexidad</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {flowProjections.map((flow) => (
+                            <tr key={flow.period} className="border-b border-[#2A2A2A] hover:bg-[#1A1A1A]">
+                              <td className="px-4 py-2 text-sm">{flow.period}</td>
+                              <td className="px-4 py-2 text-sm">{flow.date}</td>
+                              <td className="px-4 py-2 text-sm">{flow.inflationAnnual}%</td>
+                              <td className="px-4 py-2 text-sm">{flow.inflationSemestral}%</td>
+                              <td className="px-4 py-2 text-sm">{flow.gracePeriod ? "Sí" : "No"}</td>
+                              <td className="px-4 py-2 text-sm">{formatCurrency(flow.indexedBond)}</td>
+                              <td className="px-4 py-2 text-sm">{formatCurrency(flow.coupon)}</td>
+                              <td className="px-4 py-2 text-sm">{formatCurrency(flow.amortization)}</td>
+                              <td className="px-4 py-2 text-sm">{formatCurrency(flow.premium)}</td>
+                              <td className="px-4 py-2 text-sm">{formatCurrency(flow.investorFlow)}</td>
+                              <td className="px-4 py-2 text-sm">{formatCurrency(flow.actualizedFlow)}</td>
+                              <td className="px-4 py-2 text-sm">{formatCurrency(flow.flowTimePlazo)}</td>
+                              <td className="px-4 py-2 text-sm">{formatCurrency(flow.convexityFactor)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}
-
-              {/* Navigation Buttons */}
-              <div className="px-6 pb-6 mt-8 flex flex-col sm:flex-row justify-between">
-                <button
-                  onClick={() => router.push("/inversionista/dashboard")}
-                  className="px-6 py-3 border border-[#2A2A2A] bg-[#2A2A2A] rounded-lg text-white hover:bg-[#1A1A1A] transition mb-4 sm:mb-0"
-                >
-                  <ArrowLeft className="mr-2 inline" size={16} />
-                  Anterior
-                </button>
-
-                <button
-                  onClick={handleContinueToConfirmation}
-                  disabled={!flowsCalculated}
-                  className={`px-6 py-3 font-medium rounded-lg transition ${
-                    flowsCalculated
-                      ? "bg-[#39FF14] text-black hover:shadow-[0_0_8px_rgba(57,255,20,0.47)]"
-                      : "bg-gray-700 text-gray-400 cursor-not-allowed"
-                  }`}
-                >
-                  Continuar a Confirmación
-                  <ArrowRight className="ml-2 inline" size={16} />
-                </button>
-              </div>
             </>
           )}
 
           {/* Step 2: Confirmation */}
           {currentStep === 2 && (
-            <>
-              <div className="px-6 pb-6">
-                <div className="bg-[#1A1A1A] rounded-xl p-6 border border-[#2A2A2A]">
-                  <h2 className="text-xl font-semibold mb-4">Resumen Final de la Compra</h2>
+            <div className="px-6 pb-6">
+              <div className="bg-[#1E1E1E] rounded-xl p-6">
+                <h2 className="text-xl font-semibold mb-6">Confirmar Compra</h2>
 
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Bond Details */}
-                    <div>
-                      <h3 className="text-lg font-medium mb-3 text-[#39FF14]">Bono Seleccionado</h3>
-                      <div className="space-y-3">
-                        <div className="flex justify-between">
-                          <span className="text-[#AAAAAA]">Nombre:</span>
-                          <span className="font-medium">{bondDetails.name}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-[#AAAAAA]">Código ISIN:</span>
-                          <span className="font-medium">{bondDetails.isinCode}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-[#AAAAAA]">Emisor:</span>
-                          <span className="font-medium">{bondDetails.issuer}</span>
-                        </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                  <div>
+                    <h3 className="text-lg font-medium mb-4">Resumen de la Inversión</h3>
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-[#AAAAAA]">Bono:</span>
+                        <span className="font-medium">{bondDetails.name}</span>
                       </div>
-
-                      <h3 className="text-lg font-medium mt-6 mb-3 text-[#39FF14]">Flujos Clave Proyectados</h3>
-                      <div className="space-y-3">
-                        <div className="flex justify-between">
-                          <span className="text-[#AAAAAA]">Total Cupones a Recibir:</span>
-                          <span className="font-medium">S/ 362.87</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-[#AAAAAA]">Pago Final:</span>
-                          <span className="font-medium">S/ 1,234.01</span>
-                        </div>
-                        <div className="flex flex-col mt-1">
-                          <span className="text-xs text-[#AAAAAA]">Desglose del Pago Final:</span>
-                          <div className="flex justify-between pl-4 mt-1">
-                            <span className="text-xs text-[#AAAAAA]">- Amortización:</span>
-                            <span className="text-xs">S/ 1,173.85</span>
-                          </div>
-                          <div className="flex justify-between pl-4">
-                            <span className="text-xs text-[#AAAAAA]">- Último Cupón:</span>
-                            <span className="text-xs">S/ 42.55</span>
-                          </div>
-                          <div className="flex justify-between pl-4">
-                            <span className="text-xs text-[#AAAAAA]">- Prima Recibida:</span>
-                            <span className="text-xs">S/ 17.61</span>
-                          </div>
-                        </div>
+                      <div className="flex justify-between">
+                        <span className="text-[#AAAAAA]">Cantidad:</span>
+                        <span className="font-medium">1 unidad</span>
                       </div>
-
-                      <h3 className="text-lg font-medium mt-6 mb-3 text-[#39FF14]">Indicadores de Inversión</h3>
-                      <div className="grid grid-cols-3 gap-4">
-                        <div className="bg-[#151515] p-3 rounded-lg">
-                          <div className="text-[#AAAAAA] text-xs">TREA Estimada</div>
-                          <div className="text-lg font-semibold">{kpis.estimatedTREA}%</div>
-                        </div>
-                        <div className="bg-[#151515] p-3 rounded-lg">
-                          <div className="text-[#AAAAAA] text-xs">Duración</div>
-                          <div className="text-lg font-semibold">{kpis.duration} años</div>
-                        </div>
-                        <div className="bg-[#151515] p-3 rounded-lg">
-                          <div className="text-[#AAAAAA] text-xs">Convexidad</div>
-                          <div className="text-lg font-semibold">{kpis.convexity}</div>
-                        </div>
+                      <div className="flex justify-between">
+                        <span className="text-[#AAAAAA]">Precio por unidad:</span>
+                        <span className="font-medium">{formatCurrency(bondDetails.commercialPrice)}</span>
                       </div>
-                    </div>
-
-                    {/* Payment Details */}
-                    <div>
-                      <div className="bg-[#151515] p-6 rounded-xl border border-[#2A2A2A]">
-                        <h3 className="text-lg font-medium mb-4 text-center">Desembolso Total</h3>
-                        <div className="text-center mb-6">
-                          <span className="text-3xl font-bold text-[#39FF14]">{formatCurrency(totalDisbursement)}</span>
-                        </div>
-
-                        <div className="space-y-3">
-                          <div className="flex justify-between">
-                            <span>Valor Comercial del Bono:</span>
-                            <span className="font-medium">{formatCurrency(bondDetails.commercialPrice)}</span>
-                          </div>
-                          <div className="pt-3 border-t border-[#2A2A2A]">
-                            <div className="flex justify-between text-[#AAAAAA]">
-                              <span>Flotación (0.75%):</span>
-                              <span>{formatCurrency(investmentCosts.flotation)}</span>
-                            </div>
-                            <div className="flex justify-between text-[#AAAAAA] mt-1">
-                              <span>CAVALI (0.20%):</span>
-                              <span>{formatCurrency(investmentCosts.cavali)}</span>
-                            </div>
-                            <div className="flex justify-between mt-3 pt-3 border-t border-[#2A2A2A]">
-                              <span>Total Costes Bonista:</span>
-                              <span className="font-medium">{formatCurrency(investmentCosts.total)}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="mt-8 p-4 bg-[#1A1A1A] rounded-lg border border-[#2A2A2A]">
-                          <div className="flex items-start">
-                            <Info className="text-[#39FF14] mt-1 mr-2 flex-shrink-0" size={16} />
-                            <p className="text-sm text-[#AAAAAA]">
-                              Al confirmar esta compra, el monto total será debitado de su cuenta y el bono será
-                              registrado en su portafolio de inversiones.
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="mt-6">
-                          <div className="flex items-start">
-                            <input
-                              type="checkbox"
-                              id="confirm-checkbox"
-                              checked={confirmationChecked}
-                              onChange={(e) => setConfirmationChecked(e.target.checked)}
-                              className="mt-1 mr-2 h-4 w-4 rounded border-gray-300 text-[#39FF14] focus:ring-[#39FF14] bg-gray-700"
-                            />
-                            <label htmlFor="confirm-checkbox" className="text-sm">
-                              He revisado los detalles y confirmo mi intención de comprar este bono.
-                            </label>
-                          </div>
+                      <div className="flex justify-between">
+                        <span className="text-[#AAAAAA]">Costes de transacción:</span>
+                        <span className="font-medium">{formatCurrency(investmentCosts.total)}</span>
+                      </div>
+                      <div className="border-t border-[#2A2A2A] pt-3">
+                        <div className="flex justify-between">
+                          <span className="text-[#AAAAAA] font-medium">Total a pagar:</span>
+                          <span className="font-bold text-[#39FF14] text-lg">
+                            {formatCurrency(totalDisbursement)}
+                          </span>
                         </div>
                       </div>
                     </div>
                   </div>
+
+                  <div>
+                    <h3 className="text-lg font-medium mb-4">Información del Inversionista</h3>
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-[#AAAAAA]">Nombre:</span>
+                        <span className="font-medium">
+                          {inversionistaData?.firstName} {inversionistaData?.lastName}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[#AAAAAA]">Email:</span>
+                        <span className="font-medium">{user?.email || 'No disponible'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[#AAAAAA]">RUC:</span>
+                        <span className="font-medium">{inversionistaData?.ruc || 'No disponible'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-[#2A2A2A] pt-6">
+                  <div className="flex items-start space-x-3 mb-6">
+                    <input
+                      type="checkbox"
+                      id="confirmation"
+                      checked={confirmationChecked}
+                      onChange={(e) => setConfirmationChecked(e.target.checked)}
+                      className="mt-1"
+                    />
+                    <label htmlFor="confirmation" className="text-sm">
+                      Confirmo que he leído y acepto los términos y condiciones de la inversión. 
+                      Entiendo que esta es una inversión de riesgo y que los rendimientos no están garantizados.
+                    </label>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <button
+                      onClick={() => setCurrentStep(1)}
+                      className="bg-gray-600 text-white font-bold px-6 py-3 rounded-lg hover:bg-gray-700 transition duration-250"
+                    >
+                      Volver a Revisión
+                    </button>
+
+                    <button
+                      onClick={handleConfirmPurchase}
+                      disabled={!confirmationChecked || isProcessing}
+                      className="bg-[#39FF14] text-black font-bold px-6 py-3 rounded-lg hover:shadow-[0_0_8px_rgba(57,255,20,0.47)] transition duration-250 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                    >
+                      {isProcessing ? (
+                        <>
+                          <Loader2 className="mr-2 animate-spin" size={16} />
+                          Procesando...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="mr-2" size={16} />
+                          Confirmar Compra
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
-
-              {/* Navigation Buttons */}
-              <div className="px-6 pb-6 mt-4 flex flex-col sm:flex-row justify-between">
-                <button
-                  onClick={() => setCurrentStep(1)}
-                  className="px-6 py-3 border border-[#2A2A2A] bg-[#2A2A2A] rounded-lg text-white hover:bg-[#1A1A1A] transition mb-4 sm:mb-0 flex items-center justify-center"
-                >
-                  <ArrowLeft className="mr-2" size={16} />
-                  Anterior
-                </button>
-
-                <button
-                  onClick={handleConfirmPurchase}
-                  disabled={!confirmationChecked || isProcessing}
-                  className={`px-6 py-3 font-medium rounded-lg transition flex items-center justify-center ${
-                    confirmationChecked && !isProcessing
-                      ? "bg-[#39FF14] text-black hover:shadow-[0_0_8px_rgba(57,255,20,0.47)]"
-                      : "bg-gray-700 text-gray-400 cursor-not-allowed"
-                  }`}
-                >
-                  {isProcessing ? (
-                    <>
-                      <Loader2 className="mr-2 animate-spin" size={16} />
-                      Procesando...
-                    </>
-                  ) : (
-                    "Confirmar Compra"
-                  )}
-                </button>
-              </div>
-            </>
+            </div>
           )}
         </div>
       </main>
 
       {/* Success Toast */}
       {showSuccessToast && (
-        <div className="fixed bottom-6 right-6 bg-[#39FF14] text-black px-6 py-4 rounded-lg shadow-[0_0_8px_rgba(57,255,20,0.47)] flex items-center transform transition-all duration-500">
-          <CheckCircle className="text-xl mr-3" size={20} />
-          <div>
-            <p className="font-medium">¡Compra realizada con éxito!</p>
-            <p className="text-sm">El bono ha sido añadido a 'Mis Bonos'</p>
-          </div>
+        <div className="fixed top-4 right-4 bg-green-600 text-white px-6 py-4 rounded-lg shadow-lg z-50 flex items-center">
+          <CheckCircle className="mr-2" size={20} />
+          <span>¡Inversión realizada exitosamente!</span>
         </div>
       )}
     </div>

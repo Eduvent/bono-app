@@ -1,316 +1,86 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
-import { useRouter } from "next/navigation"
-import { ArrowLeft } from "lucide-react"
+import { useRouter, useParams } from "next/navigation"
+import { useAuth } from '@/lib/hooks/useAuth'
+import { useBondDetails } from '@/lib/hooks/useBondDetails'
+import { ArrowLeft, Download } from "lucide-react"
 import Chart from "chart.js/auto"
 import { formatCurrency, formatDate, formatPercent } from "@/utils/format"
 
-interface BondDetailProps {
-  params: Promise<{
-    bondId: string
-  }>
-}
-
-interface BondData {
-  id: string
-  name: string
-  status: "active" | "expired"
-  issuer: string
-  currency: string
-  nominalValue: number
-  issueDate: string
-  maturityDate: string
-  interestRate: number
-  interestRateType: string
-  paymentFrequency: string
-  inflationIndexed: boolean
-  inflationRate: number
-  maturityPremium: number
-  purchaseDate: string
-  initialDisbursement: number
-  marketValueToday: number
-  unrealizedGain: number
-  collectedCoupons: number
-  nextCouponDate: string
-  nextCouponAmount: number
-  duration: number
-  convexity: number
-  modifiedDuration: number
-  trea: number
-  costs: {
-    placement: number
-    flotation: number
-    cavali: number
-  }
-  flows: Array<{
-    period: number
-    date: string
-    annualInflation: number | null
-    semesterInflation: number | null
-    gracePeriod: string | null
-    indexedBond: number | null
-    coupon: number | null
-    amortization: number | null
-    premium: number | null
-    investorFlow: number | null
-    actualizedFlow: number | null
-    faByTerm: number | null
-    convexityFactor: number | null
-  }>
-}
-
-export default async function BondDetailPage({ params }: BondDetailProps) {
-  const { bondId } = await params;
+export default function BondDetailPage() {
   const router = useRouter()
+  const params = useParams()
+  const bondId = params.bondId as string
+  const { user } = useAuth({ requireRole: 'INVERSIONISTA' })
+  
   const [activeTab, setActiveTab] = useState<"summary" | "flows" | "analytics">("summary")
-  const [bondData, setBondData] = useState<BondData | null>(null)
   const [loading, setLoading] = useState(true)
 
+  // Referencias para gráficos
   const costChartRef = useRef<HTMLCanvasElement>(null)
   const flowChartRef = useRef<HTMLCanvasElement>(null)
   const costChartInstance = useRef<Chart | null>(null)
   const flowChartInstance = useRef<Chart | null>(null)
 
+  // Hook para datos reales del bono
+  const { bondDetails, loading: bondLoading, error: bondError } = useBondDetails(bondId)
+
+  // Funciones de formateo seguro para manejar valores nulos
+  const safeFormatCurrency = (value: number | null | undefined) => {
+    if (value === null || value === undefined || isNaN(value)) return '$0.00'
+    return formatCurrency(value)
+  }
+
+  const safeFormatPercent = (value: number | null | undefined) => {
+    if (value === null || value === undefined || isNaN(value)) return '0.000%'
+    return formatPercent(value)
+  }
+
+  const safeFormatDate = (dateString: string | null | undefined) => {
+    if (!dateString || dateString === 'N/A') return 'N/A'
+    return formatDate(dateString)
+  }
+
+  const safeFormatNumber = (value: number | null | undefined, decimals: number = 2) => {
+    if (value === null || value === undefined || isNaN(value)) return '0.00'
+    return value.toFixed(decimals)
+  }
+
+  // 📊 INICIALIZAR GRÁFICOS
   useEffect(() => {
-    // In a real app, this would fetch data from an API
-    // For now, we'll simulate loading and then set mock data
-    const fetchBondData = async () => {
-      setLoading(true)
-
-      // Simulate API call delay
-      await new Promise((resolve) => setTimeout(resolve, 500))
-
-      // Mock data for the bond
-      const mockBondData: BondData = {
-        id: (await params).bondId,
-        name: "Bono VAC - Americano",
-        status: "active",
-        issuer: "Empresa Ejemplo S.A.C.",
-        currency: "PEN (Soles)",
-        nominalValue: 1000,
-        issueDate: "2025-06-01",
-        maturityDate: "2030-05-06",
-        interestRate: 8.0,
-        interestRateType: "Efectiva",
-        paymentFrequency: "Semestral",
-        inflationIndexed: true,
-        inflationRate: 10.0,
-        maturityPremium: 10.0,
-        purchaseDate: "2025-06-01",
-        initialDisbursement: 1059.98,
-        marketValueToday: 1753.34,
-        unrealizedGain: 693.36,
-        collectedCoupons: 0,
-        nextCouponDate: "2025-11-28",
-        nextCouponAmount: 41.15,
-        duration: 4.45,
-        convexity: 22.39,
-        modifiedDuration: 4.35,
-        trea: 17.298,
-        costs: {
-          placement: 2.5,
-          flotation: 4.5,
-          cavali: 2.98,
-        },
-        flows: [
-          {
-            period: 0,
-            date: "2025-06-01",
-            annualInflation: null,
-            semesterInflation: null,
-            gracePeriod: null,
-            indexedBond: null,
-            coupon: null,
-            amortization: null,
-            premium: null,
-            investorFlow: -1059.98,
-            actualizedFlow: null,
-            faByTerm: null,
-            convexityFactor: null,
-          },
-          {
-            period: 1,
-            date: "2025-11-28",
-            annualInflation: 10.0,
-            semesterInflation: 4.881,
-            gracePeriod: "S",
-            indexedBond: 1048.81,
-            coupon: 41.15,
-            amortization: 0,
-            premium: 0,
-            investorFlow: 41.15,
-            actualizedFlow: 40.25,
-            faByTerm: 20.12,
-            convexityFactor: 80.5,
-          },
-          {
-            period: 2,
-            date: "2026-05-27",
-            annualInflation: 10.0,
-            semesterInflation: 4.881,
-            gracePeriod: "S",
-            indexedBond: 1100.0,
-            coupon: 43.15,
-            amortization: 0,
-            premium: 0,
-            investorFlow: 43.15,
-            actualizedFlow: 41.3,
-            faByTerm: 41.3,
-            convexityFactor: 247.77,
-          },
-          {
-            period: 3,
-            date: "2026-11-23",
-            annualInflation: 10.0,
-            semesterInflation: 4.881,
-            gracePeriod: "S",
-            indexedBond: 1153.69,
-            coupon: 45.26,
-            amortization: 0,
-            premium: 0,
-            investorFlow: 45.26,
-            actualizedFlow: 42.37,
-            faByTerm: 63.55,
-            convexityFactor: 508.42,
-          },
-          {
-            period: 4,
-            date: "2027-05-22",
-            annualInflation: 10.0,
-            semesterInflation: 4.881,
-            gracePeriod: "S",
-            indexedBond: 1210.0,
-            coupon: 47.47,
-            amortization: 0,
-            premium: 0,
-            investorFlow: 47.47,
-            actualizedFlow: 43.47,
-            faByTerm: 86.94,
-            convexityFactor: 869.37,
-          },
-          {
-            period: 5,
-            date: "2027-11-18",
-            annualInflation: 10.0,
-            semesterInflation: 4.881,
-            gracePeriod: "S",
-            indexedBond: 1269.06,
-            coupon: 49.79,
-            amortization: 0,
-            premium: 0,
-            investorFlow: 49.79,
-            actualizedFlow: 44.6,
-            faByTerm: 111.49,
-            convexityFactor: 1337.94,
-          },
-          {
-            period: 6,
-            date: "2028-05-16",
-            annualInflation: 10.0,
-            semesterInflation: 4.881,
-            gracePeriod: "S",
-            indexedBond: 1331.0,
-            coupon: 52.22,
-            amortization: 0,
-            premium: 0,
-            investorFlow: 52.22,
-            actualizedFlow: 45.76,
-            faByTerm: 137.27,
-            convexityFactor: 1921.77,
-          },
-          {
-            period: 7,
-            date: "2028-11-12",
-            annualInflation: 10.0,
-            semesterInflation: 4.881,
-            gracePeriod: "S",
-            indexedBond: 1395.96,
-            coupon: 54.76,
-            amortization: 0,
-            premium: 0,
-            investorFlow: 54.76,
-            actualizedFlow: 46.95,
-            faByTerm: 164.31,
-            convexityFactor: 2628.93,
-          },
-          {
-            period: 8,
-            date: "2029-05-11",
-            annualInflation: 10.0,
-            semesterInflation: 4.881,
-            gracePeriod: "S",
-            indexedBond: 1464.1,
-            coupon: 57.44,
-            amortization: 0,
-            premium: 0,
-            investorFlow: 57.44,
-            actualizedFlow: 48.16,
-            faByTerm: 192.66,
-            convexityFactor: 3467.86,
-          },
-          {
-            period: 9,
-            date: "2029-11-07",
-            annualInflation: 10.0,
-            semesterInflation: 4.881,
-            gracePeriod: "S",
-            indexedBond: 1535.56,
-            coupon: 60.24,
-            amortization: 0,
-            premium: 0,
-            investorFlow: 60.24,
-            actualizedFlow: 49.42,
-            faByTerm: 222.37,
-            convexityFactor: 4447.44,
-          },
-          {
-            period: 10,
-            date: "2030-05-06",
-            annualInflation: 10.0,
-            semesterInflation: 4.881,
-            gracePeriod: "S",
-            indexedBond: 1610.51,
-            coupon: 63.18,
-            amortization: 1610.51,
-            premium: 10.0,
-            investorFlow: 1683.69,
-            actualizedFlow: 1351.08,
-            faByTerm: 6755.4,
-            convexityFactor: 148618.76,
-          },
-        ],
-      }
-
-      setBondData(mockBondData)
-      setLoading(false)
+    if (!bondDetails) return
+    
+    // Limpiar gráficos existentes
+    if (costChartInstance.current) {
+      costChartInstance.current.destroy()
+      costChartInstance.current = null
+    }
+    if (flowChartInstance.current) {
+      flowChartInstance.current.destroy()
+      flowChartInstance.current = null
     }
 
-    fetchBondData()
-  }, [(await params).bondId])
-
-  useEffect(() => {
-    if (!bondData) return
-
-    // Initialize cost chart when data is available and we're on the summary tab
-    if (activeTab === "summary" && costChartRef.current) {
-      if (costChartInstance.current) {
-        costChartInstance.current.destroy()
-      }
-
+    // Gráfico de costes
+    if (activeTab === "summary" && costChartRef.current && bondDetails.costs) {
       const ctx = costChartRef.current.getContext("2d")
       if (ctx) {
+        const totalCosts = bondDetails.costs.placement + bondDetails.costs.flotation + bondDetails.costs.cavali
+        const placementPercent = totalCosts > 0 ? (bondDetails.costs.placement / totalCosts) * 100 : 0
+        const flotationPercent = totalCosts > 0 ? (bondDetails.costs.flotation / totalCosts) * 100 : 0
+        const cavaliPercent = totalCosts > 0 ? (bondDetails.costs.cavali / totalCosts) * 100 : 0
+
         costChartInstance.current = new Chart(ctx, {
           type: "doughnut",
           data: {
             labels: [
-              `Colocación (${bondData.costs.placement.toFixed(2)})`,
-              `Flotación (${bondData.costs.flotation.toFixed(2)})`,
-              `CAVALI (${bondData.costs.cavali.toFixed(2)})`,
+              `Colocación (${placementPercent.toFixed(2)}%)`,
+              `Flotación (${flotationPercent.toFixed(2)}%)`,
+              `Cavali (${cavaliPercent.toFixed(2)}%)`,
             ],
             datasets: [
               {
-                data: [bondData.costs.placement, bondData.costs.flotation, bondData.costs.cavali],
+                data: [placementPercent, flotationPercent, cavaliPercent],
                 backgroundColor: ["#39FF14", "#00B3E6", "#9966FF"],
                 borderWidth: 1,
                 borderColor: "#151515",
@@ -325,37 +95,24 @@ export default async function BondDetailPage({ params }: BondDetailProps) {
                 position: "bottom",
                 labels: {
                   color: "#CCCCCC",
-                  font: {
-                    family: "Inter",
-                    size: 10,
-                  },
-                  boxWidth: 10,
-                  padding: 10,
-                },
-              },
-              tooltip: {
-                callbacks: {
-                  label: (context) => `${context.label}: S/ ${context.raw}`,
+                  font: { family: "Inter", size: 11 },
+                  padding: 15,
                 },
               },
             },
-            cutout: "60%",
+            cutout: "65%",
           },
         })
       }
     }
 
-    // Initialize flow chart when data is available and we're on the analytics tab
-    if (activeTab === "analytics" && flowChartRef.current) {
-      if (flowChartInstance.current) {
-        flowChartInstance.current.destroy()
-      }
-
+    // Gráfico de flujos
+    if (activeTab === "analytics" && flowChartRef.current && bondDetails.flows.length > 0) {
       const ctx = flowChartRef.current.getContext("2d")
       if (ctx) {
-        const periods = bondData.flows.map((flow) => flow.period.toString())
-        const coupons = bondData.flows.map((flow) => flow.coupon || 0)
-        const indexedBonds = bondData.flows.map((flow) => flow.indexedBond || 0)
+        const periods = bondDetails.flows.map((flow) => flow.period.toString())
+        const investorFlows = bondDetails.flows.map((flow) => flow.investorFlow || 0)
+        const indexedBonds = bondDetails.flows.map((flow) => flow.indexedBond || 0)
 
         flowChartInstance.current = new Chart(ctx, {
           type: "bar",
@@ -363,11 +120,11 @@ export default async function BondDetailPage({ params }: BondDetailProps) {
             labels: periods,
             datasets: [
               {
-                label: "Flujo Bonista (Cupón)",
+                label: "Flujo Bonista",
                 type: "bar",
-                data: coupons,
+                data: investorFlows,
                 backgroundColor: "#39FF14",
-                yAxisID: "y_flujos",
+                order: 1,
               },
               {
                 label: "Bono Indexado",
@@ -378,7 +135,8 @@ export default async function BondDetailPage({ params }: BondDetailProps) {
                 pointBackgroundColor: "#FF33FF",
                 fill: false,
                 tension: 0.1,
-                yAxisID: "y_indexado",
+                yAxisID: "y1",
+                order: 2,
               },
             ],
           },
@@ -387,80 +145,55 @@ export default async function BondDetailPage({ params }: BondDetailProps) {
             maintainAspectRatio: false,
             scales: {
               x: {
-                title: {
-                  display: true,
-                  text: "Periodo",
-                  color: "#CCCCCC",
-                },
-                grid: {
-                  color: "rgba(42, 42, 42, 0.5)",
-                },
-                ticks: {
-                  color: "#CCCCCC",
-                },
+                title: { display: true, text: "Periodo", color: "#CCCCCC" },
+                grid: { color: "rgba(42, 42, 42, 0.5)" },
+                ticks: { color: "#CCCCCC" },
               },
-              y_flujos: {
+              y: {
                 position: "left",
-                title: {
-                  display: true,
-                  text: "Flujo Cupón (PEN)",
-                  color: "#CCCCCC",
-                },
-                grid: {
-                  color: "rgba(42, 42, 42, 0.5)",
-                },
-                ticks: {
-                  color: "#CCCCCC",
-                  callback: (value) => value.toLocaleString(),
-                },
+                title: { display: true, text: "Flujo Bonista (USD)", color: "#CCCCCC" },
+                grid: { color: "rgba(42, 42, 42, 0.5)" },
+                ticks: { color: "#CCCCCC" },
               },
-              y_indexado: {
+              y1: {
                 position: "right",
-                title: {
-                  display: true,
-                  text: "Bono Indexado (PEN)",
-                  color: "#CCCCCC",
-                },
-                grid: {
-                  drawOnChartArea: false,
-                },
-                ticks: {
-                  color: "#CCCCCC",
-                  callback: (value) => value.toLocaleString(),
-                },
+                title: { display: true, text: "Bono Indexado (USD)", color: "#CCCCCC" },
+                grid: { drawOnChartArea: false },
+                ticks: { color: "#CCCCCC" },
               },
             },
             plugins: {
               legend: {
                 position: "top",
-                labels: {
-                  color: "#CCCCCC",
-                  font: {
-                    family: "Inter",
-                  },
-                },
-              },
-              tooltip: {
-                callbacks: {
-                  label: (context) => {
-                    // Forzamos el tipo a number para evitar el error de TS
-                    const rawValue = context.raw as number;
-                    return `${context.dataset.label}: S/ ${rawValue.toLocaleString()}`;
-                  },
-                },
+                labels: { color: "#CCCCCC", font: { family: "Inter" } },
               },
             },
           },
         })
       }
     }
-  }, [bondData, activeTab])
+  }, [bondDetails, activeTab])
 
-  const handleBackToDashboard = () => {
-    router.push("/inversionista/dashboard")
-  }
+  // Cleanup gráficos al desmontar
+  useEffect(() => {
+    return () => {
+      if (costChartInstance.current) {
+        costChartInstance.current.destroy()
+      }
+      if (flowChartInstance.current) {
+        flowChartInstance.current.destroy()
+      }
+    }
+  }, [])
 
-  if (loading) {
+  useEffect(() => {
+    if (!bondLoading) {
+      setLoading(false)
+    }
+  }, [bondLoading])
+
+  // Loading state
+  if (loading || bondLoading) {
     return (
       <div className="min-h-screen bg-[#0D0D0D] flex items-center justify-center">
         <div className="text-center">
@@ -471,14 +204,19 @@ export default async function BondDetailPage({ params }: BondDetailProps) {
     )
   }
 
-  if (!bondData) {
+  // Error state
+  if (bondError || !bondDetails) {
     return (
       <div className="min-h-screen bg-[#0D0D0D] flex items-center justify-center">
         <div className="text-center">
-          <p className="text-white text-xl">No se encontró información para este bono.</p>
+          <div className="w-16 h-16 mb-4 mx-auto flex items-center justify-center">
+            <ArrowLeft className="text-red-500" size={64} />
+          </div>
+          <h2 className="text-xl font-semibold mb-2">Error al cargar el bono</h2>
+          <p className="text-gray-400 mb-6">{bondError || 'No se pudo cargar la información del bono'}</p>
           <button
-            onClick={handleBackToDashboard}
-            className="mt-4 px-4 py-2 bg-[#39FF14] text-black rounded-lg hover:shadow-[0_0_8px_rgba(57,255,20,0.47)] transition"
+            onClick={() => router.push("/inversionista/dashboard")}
+            className="bg-[#39FF14] text-black font-bold px-5 py-2 rounded-lg hover:shadow-[0_0_8px_rgba(57,255,20,0.47)] transition duration-250"
           >
             Volver al Dashboard
           </button>
@@ -495,7 +233,7 @@ export default async function BondDetailPage({ params }: BondDetailProps) {
             <span className="text-white text-xl font-semibold">BonoApp</span>
           </div>
           <button
-            onClick={handleBackToDashboard}
+            onClick={() => router.push("/inversionista/dashboard")}
             className="flex items-center text-gray-400 hover:text-[#39FF14] transition-colors cursor-pointer"
           >
             <ArrowLeft className="mr-2" size={16} />
@@ -507,13 +245,13 @@ export default async function BondDetailPage({ params }: BondDetailProps) {
       <main className="container mx-auto px-4 py-6">
         <div className="mb-6">
           <div className="flex items-center mb-2">
-            <h1 className="text-2xl font-bold mr-3">Detalle de Mi Bono: {bondData.name}</h1>
+            <h1 className="text-2xl font-bold mr-3">Detalle de Mi Bono: {bondDetails.name}</h1>
             <span
               className={`px-3 py-1 rounded-full text-sm font-medium ${
-                bondData.status === "active" ? "bg-[#39FF14] text-black" : "bg-red-500 text-white"
+                bondDetails.status === "ACTIVE" ? "bg-[#39FF14] text-black" : "bg-red-500 text-white"
               }`}
             >
-              {bondData.status === "active" ? "Activo" : "Vencido"}
+              {bondDetails.status === "ACTIVE" ? "Activo" : "Vencido"}
             </span>
           </div>
         </div>
@@ -550,49 +288,49 @@ export default async function BondDetailPage({ params }: BondDetailProps) {
                 <div className="space-y-3">
                   <div>
                     <span className="text-gray-400 w-36 inline-block">Nombre:</span>
-                    <span className="font-medium">{bondData.name}</span>
+                    <span className="font-medium">{bondDetails.name}</span>
                   </div>
                   <div>
                     <span className="text-gray-400 w-36 inline-block">Emisor:</span>
-                    <span className="font-medium">{bondData.issuer}</span>
+                    <span className="font-medium">{bondDetails.issuer}</span>
                   </div>
                   <div>
                     <span className="text-gray-400 w-36 inline-block">Moneda:</span>
-                    <span className="font-medium">{bondData.currency}</span>
+                    <span className="font-medium">{bondDetails.currency}</span>
                   </div>
                   <div>
                     <span className="text-gray-400 w-36 inline-block">Valor Nominal:</span>
-                    <span className="font-medium">{formatCurrency(bondData.nominalValue)}</span>
+                    <span className="font-medium">{safeFormatCurrency(bondDetails.nominalValue)}</span>
                   </div>
                   <div>
                     <span className="text-gray-400 w-36 inline-block">Fecha Emisión:</span>
-                    <span className="font-medium">{formatDate(bondData.issueDate)}</span>
+                    <span className="font-medium">{safeFormatDate(bondDetails.issueDate)}</span>
                   </div>
                 </div>
                 <div className="space-y-3">
                   <div>
                     <span className="text-gray-400 w-40 inline-block">Fecha Vencimiento:</span>
-                    <span className="font-medium">{formatDate(bondData.maturityDate)}</span>
+                    <span className="font-medium">{safeFormatDate(bondDetails.maturityDate)}</span>
                   </div>
                   <div>
                     <span className="text-gray-400 w-40 inline-block">Tasa de Interés:</span>
                     <span className="font-medium">
-                      {bondData.interestRate.toFixed(3)}% anual ({bondData.interestRateType})
+                      {safeFormatNumber(bondDetails.interestRate, 3)}% anual ({bondDetails.interestRateType})
                     </span>
                   </div>
                   <div>
                     <span className="text-gray-400 w-40 inline-block">Frecuencia de Pago:</span>
-                    <span className="font-medium">{bondData.paymentFrequency}</span>
+                    <span className="font-medium">{bondDetails.paymentFrequency}</span>
                   </div>
                   <div>
                     <span className="text-gray-400 w-40 inline-block">Indexado a Inflación:</span>
                     <span className="font-medium">
-                      {bondData.inflationIndexed ? `Sí (Anual ${bondData.inflationRate.toFixed(2)}%)` : "No"}
+                      {bondDetails.inflationIndexed ? `Sí (Anual ${safeFormatNumber(bondDetails.inflationRate, 2)}%)` : "No"}
                     </span>
                   </div>
                   <div>
                     <span className="text-gray-400 w-40 inline-block">Prima al Vencimiento:</span>
-                    <span className="font-medium">S/ {bondData.maturityPremium.toFixed(2)} (Recibida)</span>
+                    <span className="font-medium">USD {safeFormatNumber(bondDetails.maturityPremium, 2)} (Recibida)</span>
                   </div>
                 </div>
               </div>
@@ -606,11 +344,11 @@ export default async function BondDetailPage({ params }: BondDetailProps) {
                   <h3 className="text-lg font-semibold text-[#39FF14] mb-3">Detalles de Compra</h3>
                   <div>
                     <span className="text-gray-400 w-40 inline-block">Fecha de Compra:</span>
-                    <span className="font-medium">{formatDate(bondData.purchaseDate)}</span>
+                    <span className="font-medium">{safeFormatDate(bondDetails.purchaseDate)}</span>
                   </div>
                   <div>
                     <span className="text-gray-400 w-40 inline-block">Desembolso Inicial:</span>
-                    <span className="font-medium text-red-400">- {formatCurrency(bondData.initialDisbursement)}</span>
+                    <span className="font-medium text-red-400">- {safeFormatCurrency(bondDetails.initialDisbursement)}</span>
                   </div>
 
                   <div className="pt-3">
@@ -621,7 +359,7 @@ export default async function BondDetailPage({ params }: BondDetailProps) {
                     <div className="flex justify-between items-center text-sm mt-3 pt-2 border-t border-[#2A2A2A]">
                       <span className="text-gray-400 font-medium">Total Costes Pagados:</span>
                       <span className="font-semibold text-[#39FF14]">
-                        {formatCurrency(bondData.costs.placement + bondData.costs.flotation + bondData.costs.cavali)}
+                        {safeFormatCurrency(bondDetails.costs.placement + bondDetails.costs.flotation + bondDetails.costs.cavali)}
                       </span>
                     </div>
                   </div>
@@ -632,26 +370,26 @@ export default async function BondDetailPage({ params }: BondDetailProps) {
                   <h3 className="text-lg font-semibold text-[#39FF14] mb-3">Rendimiento y Estado</h3>
                   <div>
                     <span className="text-gray-400 w-40 inline-block">TREA (al comprar):</span>
-                    <span className="font-medium text-[#39FF14]">{formatPercent(bondData.trea)}</span>
+                    <span className="font-medium text-[#39FF14]">{safeFormatPercent(bondDetails.trea)}</span>
                   </div>
                   <div>
                     <span className="text-gray-400 w-40 inline-block">Valor de Mercado Hoy:</span>
-                    <span className="font-medium">{formatCurrency(bondData.marketValueToday)} (Ejemplo)</span>
+                    <span className="font-medium">{safeFormatCurrency(bondDetails.marketValueToday)}</span>
                   </div>
                   <div>
                     <span className="text-gray-400 w-40 inline-block">Ganancia No Realizada:</span>
                     <span className="font-medium text-[#39FF14]">
-                      + {formatCurrency(bondData.unrealizedGain)} (Ejemplo)
+                      + {safeFormatCurrency(bondDetails.unrealizedGain)}
                     </span>
                   </div>
                   <div>
                     <span className="text-gray-400 w-40 inline-block">Cupones Cobrados:</span>
-                    <span className="font-medium">{formatCurrency(bondData.collectedCoupons)} (Aún no)</span>
+                    <span className="font-medium">{safeFormatCurrency(bondDetails.collectedCoupons)}</span>
                   </div>
                   <div>
                     <span className="text-gray-400 w-40 inline-block">Próximo Cupón:</span>
                     <span className="font-medium">
-                      {formatDate(bondData.nextCouponDate)} • {formatCurrency(bondData.nextCouponAmount)}
+                      {safeFormatDate(bondDetails.nextCouponDate)} • {safeFormatCurrency(bondDetails.nextCouponAmount)}
                     </span>
                   </div>
                 </div>
@@ -661,15 +399,15 @@ export default async function BondDetailPage({ params }: BondDetailProps) {
                   <h3 className="text-lg font-semibold text-[#39FF14] mb-3">Indicadores de Riesgo</h3>
                   <div className="bg-[#151515] p-3 rounded-lg">
                     <div className="text-gray-400 text-xs">Duración</div>
-                    <div className="text-lg font-semibold">{bondData.duration.toFixed(2)} años</div>
+                    <div className="text-lg font-semibold">{safeFormatNumber(bondDetails.duration)} años</div>
                   </div>
                   <div className="bg-[#151515] p-3 rounded-lg">
                     <div className="text-gray-400 text-xs">Convexidad</div>
-                    <div className="text-lg font-semibold">{bondData.convexity.toFixed(2)}</div>
+                    <div className="text-lg font-semibold">{safeFormatNumber(bondDetails.convexity)}</div>
                   </div>
                   <div className="bg-[#151515] p-3 rounded-lg">
                     <div className="text-gray-400 text-xs">Duración Modificada</div>
-                    <div className="text-lg font-semibold">{bondData.modifiedDuration.toFixed(2)}</div>
+                    <div className="text-lg font-semibold">{safeFormatNumber(bondDetails.modifiedDuration)}</div>
                   </div>
                 </div>
               </div>
@@ -712,44 +450,44 @@ export default async function BondDetailPage({ params }: BondDetailProps) {
                   </tr>
                 </thead>
                 <tbody className="text-sm">
-                  {bondData.flows.map((flow) => (
+                  {bondDetails.flows.map((flow) => (
                     <tr key={flow.period} className="border-b border-[#2A2A2A] hover:bg-[#1E1E1E]">
                       <td className="py-2 px-3 text-center sticky left-0 bg-[#151515] hover:bg-[#1E1E1E] z-10">
                         {flow.period}
                       </td>
-                      <td className="py-2 px-3 text-left">{formatDate(flow.date)}</td>
+                      <td className="py-2 px-3 text-left">{safeFormatDate(flow.date)}</td>
                       <td className="py-2 px-3 text-right">
-                        {flow.annualInflation !== null ? `${flow.annualInflation.toFixed(2)}%` : "-"}
+                        {flow.annualInflation !== null ? `${safeFormatNumber(flow.annualInflation, 2)}%` : "-"}
                       </td>
                       <td className="py-2 px-3 text-right">
-                        {flow.semesterInflation !== null ? `${flow.semesterInflation.toFixed(3)}%` : "-"}
+                        {flow.semesterInflation !== null ? `${safeFormatNumber(flow.semesterInflation, 3)}%` : "-"}
                       </td>
                       <td className="py-2 px-3 text-center">{flow.gracePeriod || "-"}</td>
                       <td className="py-2 px-3 text-right">
-                        {flow.indexedBond !== null ? formatCurrency(flow.indexedBond) : "-"}
+                        {flow.indexedBond !== null ? safeFormatCurrency(flow.indexedBond) : "-"}
                       </td>
-                      <td className={`py-2 px-3 text-right ${flow.coupon ? "text-[#39FF14]" : ""}`}>
-                        {flow.coupon !== null ? formatCurrency(flow.coupon) : "-"}
+                      <td className={`py-2 px-3 text-right ${flow.coupon && flow.coupon > 0 ? "text-[#39FF14]" : ""}`}>
+                        {flow.coupon !== null ? safeFormatCurrency(flow.coupon) : "-"}
                       </td>
-                      <td className={`py-2 px-3 text-right ${flow.amortization ? "text-[#39FF14]" : ""}`}>
-                        {flow.amortization !== null ? formatCurrency(flow.amortization) : "-"}
+                      <td className={`py-2 px-3 text-right ${flow.amortization && flow.amortization > 0 ? "text-[#39FF14]" : ""}`}>
+                        {flow.amortization !== null ? safeFormatCurrency(flow.amortization) : "-"}
                       </td>
-                      <td className={`py-2 px-3 text-right ${flow.premium ? "text-[#39FF14]" : ""}`}>
-                        {flow.premium !== null ? formatCurrency(flow.premium) : "-"}
+                      <td className={`py-2 px-3 text-right ${flow.premium && flow.premium > 0 ? "text-[#39FF14]" : ""}`}>
+                        {flow.premium !== null ? safeFormatCurrency(flow.premium) : "-"}
                       </td>
                       <td
                         className={`py-2 px-3 text-right ${flow.investorFlow && flow.investorFlow > 0 ? "text-[#39FF14]" : flow.investorFlow && flow.investorFlow < 0 ? "text-red-400" : ""}`}
                       >
-                        {flow.investorFlow !== null ? formatCurrency(flow.investorFlow) : "-"}
+                        {flow.investorFlow !== null ? safeFormatCurrency(flow.investorFlow) : "-"}
                       </td>
                       <td className="py-2 px-3 text-right">
-                        {flow.actualizedFlow !== null ? formatCurrency(flow.actualizedFlow) : "-"}
+                        {flow.actualizedFlow !== null ? safeFormatCurrency(flow.actualizedFlow) : "-"}
                       </td>
                       <td className="py-2 px-3 text-right">
-                        {flow.faByTerm !== null ? formatCurrency(flow.faByTerm) : "-"}
+                        {flow.faByTerm !== null ? safeFormatCurrency(flow.faByTerm) : "-"}
                       </td>
                       <td className="py-2 px-3 text-right">
-                        {flow.convexityFactor !== null ? formatCurrency(flow.convexityFactor) : "-"}
+                        {flow.convexityFactor !== null ? safeFormatCurrency(flow.convexityFactor) : "-"}
                       </td>
                     </tr>
                   ))}
@@ -766,19 +504,21 @@ export default async function BondDetailPage({ params }: BondDetailProps) {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
               <div className="bg-[#1E1E1E] rounded-lg p-4">
                 <p className="text-gray-400 text-sm mb-1">VAN de Mi Inversión</p>
-                <p className="text-[#39FF14] font-medium text-xl">{formatCurrency(bondData.unrealizedGain)}</p>
+                <p className="text-[#39FF14] font-medium text-xl">{safeFormatCurrency(bondDetails.unrealizedGain)}</p>
               </div>
               <div className="bg-[#1E1E1E] rounded-lg p-4">
                 <p className="text-gray-400 text-sm mb-1">TREA (TIR)</p>
-                <p className="text-[#39FF14] font-medium text-xl">{formatPercent(bondData.trea)}</p>
+                <p className="text-[#39FF14] font-medium text-xl">{safeFormatPercent(bondDetails.trea)}</p>
               </div>
               <div className="bg-[#1E1E1E] rounded-lg p-4">
                 <p className="text-gray-400 text-sm mb-1">Duración Modificada</p>
-                <p className="text-[#39FF14] font-medium text-xl">{bondData.modifiedDuration.toFixed(2)}</p>
+                <p className="text-[#39FF14] font-medium text-xl">{safeFormatNumber(bondDetails.modifiedDuration)}</p>
               </div>
               <div className="bg-[#1E1E1E] rounded-lg p-4">
                 <p className="text-gray-400 text-sm mb-1">Total Ratios Decisión</p>
-                <p className="text-[#39FF14] font-medium text-xl">26.84</p>
+                <p className="text-[#39FF14] font-medium text-xl">
+                  {safeFormatNumber(bondDetails.duration + bondDetails.convexity)}
+                </p>
               </div>
             </div>
             <div className="bg-[#1A1A1A] rounded-lg p-4 mb-6">

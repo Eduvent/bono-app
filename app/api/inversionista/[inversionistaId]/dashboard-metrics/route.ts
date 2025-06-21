@@ -62,6 +62,19 @@ export async function GET(
                                 convexidad: true,
                                 utilidadPerdida: true,
                             }
+                        },
+                        cashFlows: {
+                            where: {
+                                cupon: { not: null },
+                                periodo: { gt: 0 }
+                            },
+                            orderBy: { periodo: 'asc' },
+                            select: {
+                                periodo: true,
+                                fecha: true,
+                                cupon: true,
+                                flujoBonista: true
+                            }
                         }
                     }
                 }
@@ -84,7 +97,36 @@ export async function GET(
             ? activeInvestments.reduce((sum, inv) => sum + inv.rendimientoActual.toNumber(), 0) / activeInvestments.length
             : 0;
 
-        // 5. Calcular valor actual del portfolio
+        // 5. Calcular intereses YTD (Year to Date)
+        const currentYear = new Date().getFullYear();
+        const yearStart = new Date(currentYear, 0, 1);
+        const yearEnd = new Date(currentYear, 11, 31);
+        
+        let totalInterestYTD = 0;
+        activeInvestments.forEach(investment => {
+            const bond = investment.bond;
+            const investedAmount = investment.montoInvertido.toNumber();
+            const nominalValue = bond.valorNominal.toNumber();
+            const couponRate = bond.tasaAnual.toNumber();
+            
+            // Calcular cupones recibidos este año
+            const couponPayments = bond.cashFlows.filter(flow => {
+                const flowDate = new Date(flow.fecha);
+                return flowDate >= yearStart && flowDate <= yearEnd && flow.cupon && flow.cupon.toNumber() > 0;
+            });
+            
+            // Sumar cupones recibidos
+            const yearCoupons = couponPayments.reduce((sum, flow) => {
+                const couponAmount = flow.cupon!.toNumber();
+                // Proporcionar el cupón según el monto invertido
+                const proportionalCoupon = (investedAmount / nominalValue) * couponAmount;
+                return sum + proportionalCoupon;
+            }, 0);
+            
+            totalInterestYTD += yearCoupons;
+        });
+
+        // 6. Calcular valor actual del portfolio
         let currentPortfolioValue = 0;
         let portfolioReturn = 0;
 
@@ -104,7 +146,7 @@ export async function GET(
 
         const averagePortfolioReturn = activeInvestments.length > 0 ? portfolioReturn / activeInvestments.length : 0;
 
-        // 6. Calcular distribución por emisor
+        // 7. Calcular distribución por emisor
         const emisorDistribution = activeInvestments.reduce((acc, inv) => {
             const emisorName = inv.bond.emisor.companyName;
             if (!acc[emisorName]) {
@@ -121,7 +163,7 @@ export async function GET(
             return acc;
         }, {} as Record<string, any>);
 
-        // 7. Calcular distribución por industria
+        // 8. Calcular distribución por industria
         const industryDistribution = Object.values(emisorDistribution).reduce((acc: any, emisor: any) => {
             const industry = emisor.industry || 'Sin industria';
             if (!acc[industry]) {
@@ -136,7 +178,7 @@ export async function GET(
             return acc;
         }, {});
 
-        // 8. Calcular métricas de riesgo
+        // 9. Calcular métricas de riesgo
         const averageDuration = activeInvestments.length > 0 
             ? activeInvestments.reduce((sum, inv) => 
                 sum + (inv.bond.financialMetrics[0]?.duracion.toNumber() || 0), 0) / activeInvestments.length
@@ -147,51 +189,43 @@ export async function GET(
                 sum + (inv.bond.financialMetrics[0]?.convexidad.toNumber() || 0), 0) / activeInvestments.length
             : 0;
 
-        // 9. Calcular próximos pagos de cupón
+        // 10. Calcular próximos pagos de cupón de manera más precisa
         const today = new Date();
         const nextCouponPayments = activeInvestments
             .map(inv => {
                 const bond = inv.bond;
-                const lastPayment = bond.fechaEmision;
-                const frequency = bond.frecuenciaCupon;
+                const investedAmount = inv.montoInvertido.toNumber();
+                const nominalValue = bond.valorNominal.toNumber();
+                const couponRate = bond.tasaAnual.toNumber();
                 
-                // Calcular próximo pago (simplificado)
-                let nextPayment = new Date(lastPayment);
-                switch (frequency) {
-                    case 'MENSUAL':
-                        nextPayment.setMonth(nextPayment.getMonth() + 1);
-                        break;
-                    case 'BIMESTRAL':
-                        nextPayment.setMonth(nextPayment.getMonth() + 2);
-                        break;
-                    case 'TRIMESTRAL':
-                        nextPayment.setMonth(nextPayment.getMonth() + 3);
-                        break;
-                    case 'CUATRIMESTRAL':
-                        nextPayment.setMonth(nextPayment.getMonth() + 4);
-                        break;
-                    case 'SEMESTRAL':
-                        nextPayment.setMonth(nextPayment.getMonth() + 6);
-                        break;
-                    case 'ANUAL':
-                        nextPayment.setFullYear(nextPayment.getFullYear() + 1);
-                        break;
+                // Encontrar el próximo cupón basado en los flujos de caja
+                const nextCoupon = bond.cashFlows.find(flow => {
+                    const flowDate = new Date(flow.fecha);
+                    return flowDate > today && flow.cupon && flow.cupon.toNumber() > 0;
+                });
+                
+                if (nextCoupon) {
+                    const couponAmount = nextCoupon.cupon!.toNumber();
+                    const proportionalCoupon = (investedAmount / nominalValue) * couponAmount;
+                    
+                    return {
+                        bondId: bond.id,
+                        bondName: bond.name,
+                        emisor: bond.emisor.companyName,
+                        nextPayment: nextCoupon.fecha.toISOString().split('T')[0],
+                        daysUntilPayment: Math.ceil((new Date(nextCoupon.fecha).getTime() - today.getTime()) / (1000 * 60 * 60 * 24)),
+                        investedAmount: investedAmount,
+                        couponAmount: proportionalCoupon,
+                        couponRate: couponRate
+                    };
                 }
-                
-                return {
-                    bondId: bond.id,
-                    bondName: bond.name,
-                    emisor: bond.emisor.companyName,
-                    nextPayment: nextPayment.toISOString().split('T')[0],
-                    daysUntilPayment: Math.ceil((nextPayment.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)),
-                    investedAmount: inv.montoInvertido.toNumber(),
-                };
+                return null;
             })
-            .filter(payment => payment.daysUntilPayment > 0)
-            .sort((a, b) => a.daysUntilPayment - b.daysUntilPayment)
+            .filter(payment => payment !== null && payment.daysUntilPayment > 0)
+            .sort((a, b) => a!.daysUntilPayment - b!.daysUntilPayment)
             .slice(0, 5); // Top 5 próximos pagos
 
-        // 10. Calcular rendimiento histórico (últimos 6 meses)
+        // 11. Calcular rendimiento histórico (últimos 6 meses)
         const sixMonthsAgo = new Date();
         sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
         
@@ -217,7 +251,7 @@ export async function GET(
             };
         }).reverse();
 
-        // 11. Formatear respuesta
+        // 12. Formatear respuesta
         const response = {
             success: true,
             inversionista: {
@@ -228,6 +262,7 @@ export async function GET(
                 totalInvested,
                 currentPortfolioValue,
                 totalUnrealizedGain,
+                totalInterestYTD, // Intereses reales YTD
                 portfolioReturn: averagePortfolioReturn,
                 totalInvestments: investments.length,
                 activeInvestments: activeInvestments.length,

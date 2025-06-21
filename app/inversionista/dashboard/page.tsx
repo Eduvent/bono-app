@@ -1,8 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from '@/lib/hooks/useAuth'
+import { useInversionistaDashboardMetrics } from '@/lib/hooks/useInversionistaDashboardMetrics'
+import { useInversionistaInvestments } from '@/lib/hooks/useInversionistaInvestments'
+import { useAvailableBonds } from '@/lib/hooks/useAvailableBonds'
 import {
   LineChartIcon as ChartLine,
   Plus,
@@ -16,29 +19,6 @@ import {
   LogOut,
 } from "lucide-react"
 
-interface Bond {
-  id: string
-  name: string
-  nominalValue: number
-  pricePaid: number
-  termYears: number
-  couponRate: number
-  treaBonista: number
-  issueDate: string
-  status: "active" | "expired"
-}
-
-interface AvailableBond {
-  id: string
-  name: string
-  issuer: string
-  nominalValue: number
-  couponRate: number
-  commercialPrice: number
-  maturityDate: string
-  estimatedTREA: number
-}
-
 export default function InversionistaDashboard() {
   const router = useRouter()
   const { user, isLoading: authLoading, logout } = useAuth({ requireRole: 'INVERSIONISTA' })
@@ -47,129 +27,25 @@ export default function InversionistaDashboard() {
   const [statusFilter, setStatusFilter] = useState("all")
   const [searchTerm, setSearchTerm] = useState("")
   const [availableSearchTerm, setAvailableSearchTerm] = useState("")
+  const [couponRateFilter, setCouponRateFilter] = useState("all")
+  const [maturityFilter, setMaturityFilter] = useState("all")
+  const [issuerTypeFilter, setIssuerTypeFilter] = useState("all")
 
-  // Sample bond data
-  const misBonos: Bond[] = [
-    {
-      id: "BOND-001",
-      name: "Bono Corporativo Alpha",
-      nominalValue: 2500000,
-      pricePaid: 2475000,
-      termYears: 5,
-      couponRate: 8.5,
-      treaBonista: 8.7,
-      issueDate: "2023-01-12",
-      status: "active",
-    },
-    {
-      id: "BOND-002",
-      name: "Bono Inversión Beta",
-      nominalValue: 1750000,
-      pricePaid: 1767500,
-      termYears: 3,
-      couponRate: 7.2,
-      treaBonista: 7.1,
-      issueDate: "2023-02-24",
-      status: "active",
-    },
-    {
-      id: "BOND-003",
-      name: "Bono Proyecto Gamma",
-      nominalValue: 3000000,
-      pricePaid: 2985000,
-      termYears: 7,
-      couponRate: 9.1,
-      treaBonista: 9.2,
-      issueDate: "2023-03-05",
-      status: "active",
-    },
-    {
-      id: "BOND-004",
-      name: "Bono Tecnológico Delta",
-      nominalValue: 2000000,
-      pricePaid: 1990000,
-      termYears: 4,
-      couponRate: 7.8,
-      treaBonista: 7.9,
-      issueDate: "2023-04-18",
-      status: "active",
-    },
-    {
-      id: "BOND-005",
-      name: "Bono Infraestructura Epsilon",
-      nominalValue: 4250000,
-      pricePaid: 4292500,
-      termYears: 10,
-      couponRate: 9.5,
-      treaBonista: 9.3,
-      issueDate: "2022-05-02",
-      status: "active",
-    },
-    {
-      id: "BOND-006",
-      name: "Bono Inmobiliario Zeta",
-      nominalValue: 1000000,
-      pricePaid: 1000000,
-      termYears: 3,
-      couponRate: 6.8,
-      treaBonista: 6.8,
-      issueDate: "2020-05-15",
-      status: "expired",
-    },
-  ]
-
-  const bonosDisponibles: AvailableBond[] = [
-    {
-      id: "BOND-101",
-      name: "Bono Desarrollo Urbano",
-      issuer: "Municipalidad Lima",
-      nominalValue: 1000000,
-      couponRate: 7.8,
-      commercialPrice: 980000,
-      maturityDate: "2028-06-15",
-      estimatedTREA: 8.1,
-    },
-    {
-      id: "BOND-102",
-      name: "Bono Corporativo Minero",
-      issuer: "Minera Andina S.A.",
-      nominalValue: 2500000,
-      couponRate: 9.2,
-      commercialPrice: 2525000,
-      maturityDate: "2030-09-30",
-      estimatedTREA: 9.0,
-    },
-    {
-      id: "BOND-103",
-      name: "Bono Energía Renovable",
-      issuer: "EcoEnergy Corp.",
-      nominalValue: 3000000,
-      couponRate: 8.5,
-      commercialPrice: 3030000,
-      maturityDate: "2029-11-12",
-      estimatedTREA: 8.3,
-    },
-    {
-      id: "BOND-104",
-      name: "Bono Infraestructura Vial",
-      issuer: "Ministerio de Transportes",
-      nominalValue: 5000000,
-      couponRate: 6.5,
-      commercialPrice: 4950000,
-      maturityDate: "2026-03-05",
-      estimatedTREA: 6.7,
-    },
-    {
-      id: "BOND-105",
-      name: "Bono Hipotecario Bancario",
-      issuer: "Banco Nacional S.A.",
-      nominalValue: 1500000,
-      couponRate: 5.8,
-      commercialPrice: 1492500,
-      maturityDate: "2025-07-22",
-      estimatedTREA: 6.0,
-    },
-  ]
+  // Hooks para datos reales
+  const { metrics, loading: metricsLoading } = useInversionistaDashboardMetrics()
+  const { investments, loading: investmentsLoading } = useInversionistaInvestments()
+  
+  // Usar useMemo para evitar recrear el objeto en cada render
+  const availableBondsFilters = useMemo(() => ({
+    searchTerm: availableSearchTerm,
+    couponRateRange: couponRateFilter !== "all" ? couponRateFilter : undefined,
+    maturityRange: maturityFilter !== "all" ? maturityFilter : undefined,
+    issuerType: issuerTypeFilter !== "all" ? issuerTypeFilter : undefined,
+    sortBy: 'estimatedTREA' as const,
+    sortOrder: 'desc' as const
+  }), [availableSearchTerm, couponRateFilter, maturityFilter, issuerTypeFilter])
+  
+  const { bonds: availableBonds, loading: availableBondsLoading } = useAvailableBonds(availableBondsFilters)
 
   useEffect(() => {
     if (user?.inversionistaProfile) {
@@ -190,28 +66,20 @@ export default function InversionistaDashboard() {
     return date.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" })
   }
 
-  const filteredMisBonos = misBonos.filter((bond) => {
-    const matchesStatus = statusFilter === "all" || bond.status === statusFilter
-    const matchesSearch =
-      bond.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      bond.name.toLowerCase().includes(searchTerm.toLowerCase())
-    return matchesStatus && matchesSearch
-  })
+  // Usar useMemo para el filtrado de inversiones
+  const filteredInvestments = useMemo(() => {
+    return investments.filter((investment) => {
+      const matchesStatus = statusFilter === "all" || 
+        (statusFilter === "active" && investment.status === "ACTIVE") ||
+        (statusFilter === "expired" && investment.status === "MATURED")
+      const matchesSearch =
+        investment.bondId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        investment.bondName.toLowerCase().includes(searchTerm.toLowerCase())
+      return matchesStatus && matchesSearch
+    })
+  }, [investments, statusFilter, searchTerm])
 
-  const filteredBonosDisponibles = bonosDisponibles.filter((bond) => {
-    return (
-      bond.id.toLowerCase().includes(availableSearchTerm.toLowerCase()) ||
-      bond.name.toLowerCase().includes(availableSearchTerm.toLowerCase()) ||
-      bond.issuer.toLowerCase().includes(availableSearchTerm.toLowerCase())
-    )
-  })
-
-  // Calculate KPIs
-  const totalInvertido = misBonos.reduce((sum, bond) => sum + bond.pricePaid, 0)
-  const bonosActuales = misBonos.filter((bond) => bond.status === "active").length
-  const interesesRecibidos = 875430 // Sample YTD interest
-  const proximoCupon = { amount: 123750, date: "15 Junio, 2023" }
-
+  // Loading state
   if (authLoading || !inversionistaData) {
     return (
       <div className="min-h-screen bg-[#0D0D0D] flex items-center justify-center">
@@ -289,7 +157,9 @@ export default function InversionistaDashboard() {
                   <DollarSign className="text-gray-500" size={20} />
                 </div>
                 <div className="flex items-end">
-                  <span className="text-[#39FF14] text-3xl font-bold">{formatCurrency(totalInvertido)}</span>
+                  <span className="text-[#39FF14] text-3xl font-bold">
+                    {metricsLoading ? "..." : formatCurrency(metrics?.totalInvested || 0)}
+                  </span>
                 </div>
               </div>
 
@@ -299,7 +169,9 @@ export default function InversionistaDashboard() {
                   <Certificate className="text-gray-500" size={20} />
                 </div>
                 <div className="flex items-end">
-                  <span className="text-[#39FF14] text-3xl font-bold">{bonosActuales}</span>
+                  <span className="text-[#39FF14] text-3xl font-bold">
+                    {metricsLoading ? "..." : metrics?.activeBonds || 0}
+                  </span>
                   <span className="text-gray-400 ml-1 mb-1">bonos</span>
                 </div>
               </div>
@@ -310,7 +182,9 @@ export default function InversionistaDashboard() {
                   <Receipt className="text-gray-500" size={20} />
                 </div>
                 <div className="flex items-end">
-                  <span className="text-[#39FF14] text-3xl font-bold">{formatCurrency(interesesRecibidos)}</span>
+                  <span className="text-[#39FF14] text-3xl font-bold">
+                    {metricsLoading ? "..." : formatCurrency(metrics?.totalInterestYTD || 0)}
+                  </span>
                 </div>
               </div>
 
@@ -320,8 +194,12 @@ export default function InversionistaDashboard() {
                   <Calendar className="text-gray-500" size={20} />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[#39FF14] text-3xl font-bold">{formatCurrency(proximoCupon.amount)}</span>
-                  <span className="text-gray-400 text-sm mt-1">{proximoCupon.date}</span>
+                  <span className="text-[#39FF14] text-3xl font-bold">
+                    {metricsLoading ? "..." : formatCurrency(metrics?.nextCouponPayment?.amount || 0)}
+                  </span>
+                  <span className="text-gray-400 text-sm mt-1">
+                    {metricsLoading ? "..." : metrics?.nextCouponPayment?.date || "Sin pagos próximos"}
+                  </span>
                 </div>
               </div>
             </div>
@@ -388,12 +266,6 @@ export default function InversionistaDashboard() {
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">
                         <div className="flex items-center">
-                          Plazo (años)
-                          <ArrowUpDown className="ml-1" size={12} />
-                        </div>
-                      </th>
-                      <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">
-                        <div className="flex items-center">
                           Cupón (%)
                           <ArrowUpDown className="ml-1" size={12} />
                         </div>
@@ -406,7 +278,7 @@ export default function InversionistaDashboard() {
                       </th>
                       <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">
                         <div className="flex items-center">
-                          Fecha Emisión
+                          Fecha Inversión
                           <ArrowUpDown className="ml-1" size={12} />
                         </div>
                       </th>
@@ -419,36 +291,49 @@ export default function InversionistaDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredMisBonos.map((bond) => (
-                      <tr
-                        key={bond.id}
-                        onClick={() => router.push(`/inversionista/bond/${bond.id}`)}
-                        className="border-b border-[#2A2A2A] hover:bg-[#1A1A1A] cursor-pointer transition"
-                      >
-                        <td className="px-6 py-4 text-sm">{bond.id}</td>
-                        <td className="px-6 py-4 text-sm">{bond.name}</td>
-                        <td className="px-6 py-4 text-sm">{formatCurrency(bond.nominalValue)}</td>
-                        <td className="px-6 py-4 text-sm">{formatCurrency(bond.pricePaid)}</td>
-                        <td className="px-6 py-4 text-sm">{bond.termYears}</td>
-                        <td className="px-6 py-4 text-sm">{bond.couponRate}%</td>
-                        <td className="px-6 py-4 text-sm">{bond.treaBonista}%</td>
-                        <td className="px-6 py-4 text-sm">{formatDate(bond.issueDate)}</td>
-                        <td className="px-6 py-4 text-sm">
-                          <span
-                            className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                              bond.status === "active" ? "bg-green-900 text-green-400" : "bg-red-900 text-red-400"
-                            }`}
-                          >
-                            {bond.status === "active" ? "Activo" : "Vencido"}
-                          </span>
+                    {investmentsLoading ? (
+                      <tr>
+                        <td colSpan={8} className="px-6 py-8 text-center">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#39FF14] mx-auto"></div>
+                          <p className="text-gray-400 mt-2">Cargando inversiones...</p>
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      filteredInvestments.map((investment) => (
+                        <tr
+                          key={investment.id}
+                          onClick={() => router.push(`/inversionista/bond/${investment.bondId}`)}
+                          className="border-b border-[#2A2A2A] hover:bg-[#1A1A1A] cursor-pointer transition"
+                        >
+                          <td className="px-6 py-4 text-sm">{investment.bondCode}</td>
+                          <td className="px-6 py-4 text-sm">{investment.bondName}</td>
+                          <td className="px-6 py-4 text-sm">{formatCurrency(investment.valorNominal)}</td>
+                          <td className="px-6 py-4 text-sm">{formatCurrency(investment.precioCompra)}</td>
+                          <td className="px-6 py-4 text-sm">{investment.tasaAnual}%</td>
+                          <td className="px-6 py-4 text-sm">{investment.trea || 0}%</td>
+                          <td className="px-6 py-4 text-sm">{formatDate(investment.fechaInversion)}</td>
+                          <td className="px-6 py-4 text-sm">
+                            <span
+                              className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                                investment.status === "ACTIVE" 
+                                  ? "bg-green-900 text-green-400" 
+                                  : investment.status === "MATURED"
+                                  ? "bg-blue-900 text-blue-400"
+                                  : "bg-red-900 text-red-400"
+                              }`}
+                            >
+                              {investment.status === "ACTIVE" ? "Activo" : 
+                               investment.status === "MATURED" ? "Vencido" : "En Default"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
 
-              {filteredMisBonos.length === 0 && (
+              {!investmentsLoading && filteredInvestments.length === 0 && (
                 <div className="py-16 flex flex-col items-center justify-center">
                   <div className="w-40 h-40 mb-6 flex items-center justify-center">
                     <DollarSign className="text-gray-700" size={80} />
@@ -477,7 +362,11 @@ export default function InversionistaDashboard() {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 space-y-4 md:space-y-0">
               <div className="flex space-x-3">
                 <div className="relative">
-                  <select className="bg-[#151515] border border-[#2A2A2A] rounded-lg py-2 pl-4 pr-10 appearance-none focus:outline-none focus:border-[#39FF14] transition">
+                  <select 
+                    value={couponRateFilter}
+                    onChange={(e) => setCouponRateFilter(e.target.value)}
+                    className="bg-[#151515] border border-[#2A2A2A] rounded-lg py-2 pl-4 pr-10 appearance-none focus:outline-none focus:border-[#39FF14] transition"
+                  >
                     <option value="all">Todas las Tasas</option>
                     <option value="5-7">5% - 7%</option>
                     <option value="7-9">7% - 9%</option>
@@ -490,7 +379,11 @@ export default function InversionistaDashboard() {
                 </div>
 
                 <div className="relative">
-                  <select className="bg-[#151515] border border-[#2A2A2A] rounded-lg py-2 pl-4 pr-10 appearance-none focus:outline-none focus:border-[#39FF14] transition">
+                  <select 
+                    value={maturityFilter}
+                    onChange={(e) => setMaturityFilter(e.target.value)}
+                    className="bg-[#151515] border border-[#2A2A2A] rounded-lg py-2 pl-4 pr-10 appearance-none focus:outline-none focus:border-[#39FF14] transition"
+                  >
                     <option value="all">Todos los Vencimientos</option>
                     <option value="0-3">0-3 años</option>
                     <option value="3-5">3-5 años</option>
@@ -504,7 +397,11 @@ export default function InversionistaDashboard() {
                 </div>
 
                 <div className="relative">
-                  <select className="bg-[#151515] border border-[#2A2A2A] rounded-lg py-2 pl-4 pr-10 appearance-none focus:outline-none focus:border-[#39FF14] transition">
+                  <select 
+                    value={issuerTypeFilter}
+                    onChange={(e) => setIssuerTypeFilter(e.target.value)}
+                    className="bg-[#151515] border border-[#2A2A2A] rounded-lg py-2 pl-4 pr-10 appearance-none focus:outline-none focus:border-[#39FF14] transition"
+                  >
                     <option value="all">Todos los Emisores</option>
                     <option value="corp">Corporativos</option>
                     <option value="gov">Gubernamentales</option>
@@ -587,31 +484,40 @@ export default function InversionistaDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredBonosDisponibles.map((bond) => (
-                      <tr key={bond.id} className="border-b border-[#2A2A2A] hover:bg-[#1A1A1A] transition group">
-                        <td className="px-6 py-4 text-sm">{bond.id}</td>
-                        <td className="px-6 py-4 text-sm">{bond.name}</td>
-                        <td className="px-6 py-4 text-sm">{bond.issuer}</td>
-                        <td className="px-6 py-4 text-sm">{formatCurrency(bond.nominalValue)}</td>
-                        <td className="px-6 py-4 text-sm">{bond.couponRate}%</td>
-                        <td className="px-6 py-4 text-sm">{formatCurrency(bond.commercialPrice)}</td>
-                        <td className="px-6 py-4 text-sm">{formatDate(bond.maturityDate)}</td>
-                        <td className="px-6 py-4 text-sm">{bond.estimatedTREA}%</td>
-                        <td className="px-6 py-4 text-sm">
-                          <button
-                            onClick={() => router.push(`/inversionista/invest/${bond.id}`)}
-                            className="bg-[#39FF14] text-black font-medium px-3 py-1.5 rounded hover:shadow-[0_0_8px_rgba(57,255,20,0.47)] transition duration-250"
-                          >
-                            Seleccionar
-                          </button>
+                    {availableBondsLoading ? (
+                      <tr>
+                        <td colSpan={9} className="px-6 py-8 text-center">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#39FF14] mx-auto"></div>
+                          <p className="text-gray-400 mt-2">Cargando bonos disponibles...</p>
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      availableBonds.map((bond) => (
+                        <tr key={bond.id} className="border-b border-[#2A2A2A] hover:bg-[#1A1A1A] transition group">
+                          <td className="px-6 py-4 text-sm">{bond.isinCode}</td>
+                          <td className="px-6 py-4 text-sm">{bond.name}</td>
+                          <td className="px-6 py-4 text-sm">{bond.issuerName}</td>
+                          <td className="px-6 py-4 text-sm">{formatCurrency(bond.nominalValue)}</td>
+                          <td className="px-6 py-4 text-sm">{bond.couponRate}%</td>
+                          <td className="px-6 py-4 text-sm">{formatCurrency(bond.commercialPrice)}</td>
+                          <td className="px-6 py-4 text-sm">{formatDate(bond.maturityDate)}</td>
+                          <td className="px-6 py-4 text-sm">{bond.estimatedTREA}%</td>
+                          <td className="px-6 py-4 text-sm">
+                            <button
+                              onClick={() => router.push(`/inversionista/invest/${bond.id}`)}
+                              className="bg-[#39FF14] text-black font-medium px-3 py-1.5 rounded hover:shadow-[0_0_8px_rgba(57,255,20,0.47)] transition duration-250"
+                            >
+                              Seleccionar
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
 
-              {filteredBonosDisponibles.length === 0 && (
+              {!availableBondsLoading && availableBonds.length === 0 && (
                 <div className="py-16 flex flex-col items-center justify-center">
                   <div className="w-40 h-40 mb-6 flex items-center justify-center">
                     <Search className="text-gray-700" size={80} />
@@ -620,7 +526,15 @@ export default function InversionistaDashboard() {
                   <p className="text-gray-400 mb-6 text-center max-w-md">
                     No hay bonos disponibles que coincidan con tus criterios de búsqueda o filtros.
                   </p>
-                  <button className="bg-[#39FF14] text-black font-bold px-5 py-2 rounded-lg hover:shadow-[0_0_8px_rgba(57,255,20,0.47)] transition duration-250">
+                  <button 
+                    onClick={() => {
+                      setAvailableSearchTerm("")
+                      setCouponRateFilter("all")
+                      setMaturityFilter("all")
+                      setIssuerTypeFilter("all")
+                    }}
+                    className="bg-[#39FF14] text-black font-bold px-5 py-2 rounded-lg hover:shadow-[0_0_8px_rgba(57,255,20,0.47)] transition duration-250"
+                  >
                     Refrescar Lista
                   </button>
                 </div>
