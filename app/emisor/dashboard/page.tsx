@@ -1,7 +1,7 @@
-// app/emisor/dashboard/page.tsx - VERSIÓN FINAL CORREGIDA
+// app/emisor/dashboard/page.tsx - VERSIÓN CORREGIDA CON KPIs REALES
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   LineChartIcon as ChartLine,
@@ -25,10 +25,11 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { useEmisorBonds } from '@/lib/hooks/useEmisorBonds';
+import { useDashboardMetrics } from '@/lib/hooks/useDashboardMetrics';
 
 interface Bond {
   id: string;
-  status: 'ACTIVE' | 'DRAFT' | 'PAUSED' | 'COMPLETED';
+  status: string;
   name: string;
   codigoIsin: string | null;
   nominalValue: number;
@@ -48,9 +49,9 @@ export default function EmisorDashboard() {
   // 🔗 HOOKS REALES CONECTADOS
   const { user, isLoading: authLoading, logout } = useAuth({ requireRole: 'EMISOR' });
 
+  // Hook para bonos (tabla)
   const {
     bonds,
-    metrics,
     isLoading: bondsLoading,
     error: bondsError,
     refresh: refreshBonds,
@@ -59,6 +60,14 @@ export default function EmisorDashboard() {
     status: statusFilter as any,
     refreshInterval: autoRefresh ? 30000 : 0,
   });
+
+  // Hook para métricas del dashboard (KPIs)
+  const {
+    metrics: dashboardMetrics,
+    isLoading: metricsLoading,
+    error: metricsError,
+    refresh: refreshMetrics,
+  } = useDashboardMetrics(user?.emisorProfile?.id || '');
 
   // Verificar autenticación con localStorage como fallback
   useEffect(() => {
@@ -78,7 +87,7 @@ export default function EmisorDashboard() {
   };
 
   const handleRefresh = async () => {
-    await refreshBonds();
+    await Promise.all([refreshBonds(), refreshMetrics()]);
     setLastRefresh(new Date());
   };
 
@@ -116,26 +125,29 @@ export default function EmisorDashboard() {
   // Filtrar bonos
   const filteredBonds = filterBonds ? filterBonds(searchTerm, statusFilter) : [];
 
-  // 📊 CALCULAR KPIs REALES
-  const activeBonds = bonds?.filter((b: Bond) => b.status === "ACTIVE") || [];  const totalNominal = metrics?.totalNominalValue || 0;
-  const activeBondsCount = metrics?.activeBonds || 0;
-  const averageTCEA = metrics?.averageTCEA || 0;
+  // 📊 CALCULAR KPIs REALES CON useMemo PARA OPTIMIZACIÓN
+  const kpis = useMemo(() => {
+    if (!dashboardMetrics) {
+      return {
+        totalNominal: 0,
+        activeBondsCount: 0,
+        interestPaidYTD: 0,
+        nextPaymentAmount: 0,
+        nextPaymentDate: null,
+      };
+    }
 
-  // Calcular próximo pago estimado
-  const interestPaidYTD = activeBonds.reduce((sum: number, bond: Bond) => {
-    const estimatedInterest = (bond.nominalValue * (bond.tceaEmisor || 0.08)) * 0.5; // Aprox anual * 0.5
-    return sum + estimatedInterest;
-  }, 0);
-
-  const nextPaymentAmount = activeBonds.reduce((sum: number, bond: Bond) => {
-    const estimatedCoupon = (bond.nominalValue * (bond.tceaEmisor || 0.08)) / 2; // Semestral
-    return sum + estimatedCoupon;
-  }, 0);
-
-  const nextPaymentDate = activeBonds.length > 0 ? new Date(Date.now() + 90 * 24 * 60 * 60 * 1000) : null;
+    return {
+      totalNominal: dashboardMetrics.totalNominalValue || 0,
+      activeBondsCount: dashboardMetrics.activeBonds || 0,
+      interestPaidYTD: dashboardMetrics.interestPaidYTD || 0,
+      nextPaymentAmount: dashboardMetrics.nextPayment?.amount || 0,
+      nextPaymentDate: dashboardMetrics.nextPayment?.date || null,
+    };
+  }, [dashboardMetrics]);
 
   // 🔄 ESTADOS DE CARGA Y ERROR
-  if (authLoading || bondsLoading) {
+  if (authLoading || bondsLoading || metricsLoading) {
     return (
         <div className="min-h-screen bg-[#0D0D0D] flex items-center justify-center">
           <div className="text-center">
@@ -146,12 +158,14 @@ export default function EmisorDashboard() {
     );
   }
 
-  if (bondsError) {
+  if (bondsError || metricsError) {
     return (
         <div className="min-h-screen bg-[#0D0D0D] flex items-center justify-center">
           <div className="text-center">
             <AlertCircle className="mx-auto text-red-400 mb-4" size={48} />
-            <p className="text-red-400 mb-4">Error cargando datos: {bondsError}</p>
+            <p className="text-red-400 mb-4">
+              Error cargando datos: {bondsError || metricsError}
+            </p>
             <button
                 onClick={handleRefresh}
                 className="bg-[#39FF14] text-black px-4 py-2 rounded-lg"
@@ -195,7 +209,7 @@ export default function EmisorDashboard() {
             <p className="text-gray-400">Administra tus bonos americanos y visualiza su rendimiento</p>
           </div>
 
-          {/* KPI Cards - EXACTAMENTE COMO TU MAQUETA */}
+          {/* KPI Cards - CON DATOS REALES */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <div className="bg-gradient-to-br from-[#1E1E1E] to-[#242424] rounded-xl p-5">
               <div className="flex justify-between items-start mb-4">
@@ -203,7 +217,7 @@ export default function EmisorDashboard() {
                 <DollarSign className="text-gray-500" size={20} />
               </div>
               <div className="flex items-end">
-                <span className="text-[#39FF14] text-3xl font-bold">{formatCurrency(totalNominal)}</span>
+                <span className="text-[#39FF14] text-3xl font-bold">{formatCurrency(kpis.totalNominal)}</span>
               </div>
             </div>
 
@@ -213,7 +227,7 @@ export default function EmisorDashboard() {
                 <Certificate className="text-gray-500" size={20} />
               </div>
               <div className="flex items-end">
-                <span className="text-[#39FF14] text-3xl font-bold">{activeBondsCount}</span>
+                <span className="text-[#39FF14] text-3xl font-bold">{kpis.activeBondsCount}</span>
                 <span className="text-gray-400 ml-1 mb-1">bonos</span>
               </div>
             </div>
@@ -224,7 +238,7 @@ export default function EmisorDashboard() {
                 <HandCoins className="text-gray-500" size={20} />
               </div>
               <div className="flex items-end">
-                <span className="text-[#39FF14] text-3xl font-bold">{formatCurrency(interestPaidYTD)}</span>
+                <span className="text-[#39FF14] text-3xl font-bold">{formatCurrency(kpis.interestPaidYTD)}</span>
               </div>
               <p className="text-xs text-gray-500 mt-1">Desde 01 Ene, {new Date().getFullYear()}</p>
             </div>
@@ -235,10 +249,10 @@ export default function EmisorDashboard() {
                 <Calendar className="text-gray-500" size={20} />
               </div>
               <div className="flex flex-col">
-                <span className="text-[#39FF14] text-3xl font-bold">{formatCurrency(nextPaymentAmount)}</span>
+                <span className="text-[#39FF14] text-3xl font-bold">{formatCurrency(kpis.nextPaymentAmount)}</span>
                 <span className="text-gray-400 text-sm mt-1">
-                {nextPaymentDate ? formatDate(nextPaymentDate.toISOString().split("T")[0]) : "--"}
-              </span>
+                  {kpis.nextPaymentDate ? formatDate(kpis.nextPaymentDate) : "--"}
+                </span>
               </div>
               <p className="text-xs text-gray-500 mt-1">Total de todos los bonos</p>
             </div>

@@ -42,7 +42,7 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
 
   const bond = bondData?.bond
 
-  // Hook de cálculos financieros
+  // Hook de cálculos financieros - DESACTIVAR AUTO CALCULATE PARA EVITAR BUCLE
   const {
     calculate,
     isCalculating,
@@ -51,13 +51,14 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
     needsRecalculation,
     canCalculate,
     isLoadingStatus
-  } = useCalculations(resolvedParams.bondId, {    autoCalculate: true,
+  } = useCalculations(resolvedParams.bondId, { 
+    autoCalculate: false, // DESACTIVADO para evitar bucle infinito
     onSuccess: (result) => {
       console.log('✅ Cálculos completados:', result)
     }
   })
 
-  // Hook de flujos de caja
+  // Hook de flujos de caja - DESACTIVAR AUTO CALCULATE
   const {
     flows,
     isLoading: flowsLoading,
@@ -67,7 +68,7 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
     hasFlows: hasFlowsData
   } = useCashFlows(resolvedParams.bondId, {
     role: 'emisor',
-    autoCalculate: true
+    autoCalculate: false // DESACTIVADO para evitar bucle infinito
   })
 
   // Hook de estado del bono
@@ -168,24 +169,25 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
     }
 
     // Gráfico de costes
-    if (activeTab === "summary" && costChartRef.current && bond?.costs) {      const ctx = costChartRef.current.getContext("2d")
+    if (activeTab === "summary" && costChartRef.current && bond?.costs) {
+      const ctx = costChartRef.current.getContext("2d")
       if (ctx) {
         const costs = bond.costs
         costChartInstance.current = new Chart(ctx, {
           type: "doughnut",
           data: {
             labels: [
-              `Prima (${((costs.primaVencimiento || 0) * 100).toFixed(2)}%)`,
               `Estructuración (${((costs.estructuracionPorcentaje || 0) * 100).toFixed(2)}%)`,
               `Colocación (${((costs.colocacionPorcentaje || 0) * 100).toFixed(2)}%)`,
-              `Otros (${((costs.cavaliPorcentaje || 0) * 100).toFixed(2)}%)`,
+              `Flotación (${((costs.flotacionPorcentaje || 0) * 100).toFixed(2)}%)`,
+              `Cavali (${((costs.cavaliPorcentaje || 0) * 100).toFixed(2)}%)`,
             ],
             datasets: [
               {
                 data: [
-                  (costs.primaVencimiento || 0) * 100,
                   (costs.estructuracionPorcentaje || 0) * 100,
                   (costs.colocacionPorcentaje || 0) * 100,
+                  (costs.flotacionPorcentaje || 0) * 100,
                   (costs.cavaliPorcentaje || 0) * 100,
                 ],
                 backgroundColor: ["#39FF14", "#00B3E6", "#9966FF", "#FF6633"],
@@ -320,23 +322,11 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
         </div>
     )
   }
-  const initialAutoLoading = (!lastResult || !hasFlowsData) && (isLoadingStatus || isCalculating || flowsLoading)
 
-  if (initialAutoLoading) {
-    return (
-        <div className="min-h-screen bg-[#0D0D0D] flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#39FF14] mx-auto"></div>
-            <p className="text-white mt-4">Calculando flujos...</p>
-          </div>
-        </div>
-    )
-  }
-
-  // Extraer métricas desde lastResult
-  const metricas = lastResult?.metricas?.emisor
+  // Extraer métricas desde lastResult o desde bond.financialMetrics
+  const metricas = lastResult?.metricas?.emisor || bond.financialMetrics
   const vanEmisor = metricas?.van || 0
-  const tceaEmisor = metricas?.tceaEmisorConEscudo || metricas?.tceaEmisor || 0
+  const tceaEmisor = metricas?.tceaConEscudo || metricas?.tcea || 0
   const duracion = metricas?.duracion || 0
   const convexidad = metricas?.convexidad || 0
   const duracionModificada = metricas?.duracionModificada || 0
@@ -484,17 +474,13 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
 
                     <div className="flex justify-between items-center">
                       <span className="text-gray-400">Fecha de Vencimiento</span>
-                      <span className="font-medium">
-                    {bond?.fechaEmision && bond?.numAnios ?
-                        formatDate(new Date(new Date(bond?.fechaEmision).getTime() + bond?.numAnios * 365 * 24 * 60 * 60 * 1000).toISOString())
-                        : "N/A"}
-                  </span>
+                      <span className="font-medium">{formatDate(bond?.fechaVencimiento)}</span>
                     </div>
                     <div className="border-b border-[#2A2A2A]"></div>
 
                     <div className="flex justify-between items-center">
                       <span className="text-gray-400">Tipo de Tasa</span>
-                      <span className="font-medium">Efectiva</span>
+                      <span className="font-medium">{bond?.tipoTasa === 'EFECTIVA' ? 'Efectiva' : 'Nominal'}</span>
                     </div>
                     <div className="border-b border-[#2A2A2A]"></div>
 
@@ -506,13 +492,13 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
 
                     <div className="flex justify-between items-center">
                       <span className="text-gray-400">Frecuencia de Pago</span>
-                      <span className="font-medium capitalize">{bond?.frecuenciaCupon}</span>
+                      <span className="font-medium capitalize">{bond?.frecuenciaCupon?.toLowerCase()}</span>
                     </div>
                     <div className="border-b border-[#2A2A2A]"></div>
 
                     <div className="flex justify-between items-center">
                       <span className="text-gray-400">Días por Año</span>
-                      <span className="font-medium">{bond?.diasPorAno}</span>
+                      <span className="font-medium">{bond?.baseDias || "N/A"}</span>
                     </div>
                     <div className="border-b border-[#2A2A2A]"></div>
 
@@ -556,7 +542,7 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
                       </div>
                       <div className="bg-[#1E1E1E] rounded-lg p-4">
                         <p className="text-gray-400 text-xs mb-1">TCEA Emisor (bruta)</p>
-                        <p className="text-[#39FF14] font-medium text-lg">{formatPercent(metricas?.tceaEmisor)}</p>
+                        <p className="text-[#39FF14] font-medium text-lg">{formatPercent(metricas?.tcea)}</p>
                       </div>
                       <div className="bg-[#1E1E1E] rounded-lg p-4">
                         <p className="text-gray-400 text-xs mb-1">TCEA Emisor (c/Escudo)</p>
@@ -575,13 +561,8 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
                         <div className="flex justify-between items-center pt-4 border-t border-[#2A2A2A]">
                           <span className="text-gray-400">Total Costes Emisor</span>
                           <span className="font-medium text-[#39FF14]">
-                      {formatPercent(
-                          (bond?.costs?.estructuracionPorcentaje || 0) +
-                          (bond?.costs?.colocacionPorcentaje || 0) +
-                          (bond?.costs?.flotacionPorcentaje || 0) +
-                          (bond?.costs?.cavaliPorcentaje || 0)
-                      )}?
-                    </span>
+                            {formatPercent(bond.costs.totalCostesEmisor)}
+                          </span>
                         </div>
                       </div>
                   )}
@@ -711,7 +692,7 @@ export default function BondDetailPage({ params, searchParams }: BondDetailProps
                         </div>
                         <div className="bg-[#1E1E1E] rounded-lg p-4">
                           <p className="text-gray-400 text-sm mb-1">TIR Emisor (bruta)</p>
-                          <p className="text-[#39FF14] font-medium text-xl">{formatPercent(metricas?.tceaEmisor)}</p>
+                          <p className="text-[#39FF14] font-medium text-xl">{formatPercent(metricas?.tcea)}</p>
                         </div>
                         <div className="bg-[#1E1E1E] rounded-lg p-4">
                           <p className="text-gray-400 text-sm mb-1">Duración Modificada</p>
